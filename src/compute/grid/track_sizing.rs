@@ -1337,11 +1337,38 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
 
     // For each flexible track, if the product of the used flex fraction and the track’s flex factor is greater
     // than the track’s base size, set its base size to that product.
+    //
+    // VIPER-PATCH(grid-fr-carry): the product is converted to Chrome's layout unit (1/64 px) as Blink converts it,
+    // carrying each track's truncated remainder to the next flexible track, so that the tracks share out the free
+    // space exactly. Blink's `GridTrackSizingAlgorithm::ExpandFlexibleTracks` (third_party/blink/renderer/core/
+    // layout/grid/grid_track_sizing_algorithm.cc) keeps the fr size in raw layout units as a float; for each flexible
+    // set in order, `fr_share = fr_size * flex_factor + leftover`, the expanded size is
+    // `LayoutUnit::FromRawValue(fr_share + FLT_EPSILON)` (a saturating truncation), and when it is at least the set's
+    // base size the set takes it and `leftover = max(fr_share - expanded, 0)`. Upstream Taffy sizes in unrounded
+    // `f32` px, so three 1fr tracks of 1232px are 410.65625px, 410.671875px, 410.65625px in Chrome and 410.6667px
+    // each here. Taffy's fr size in px times 64 is exactly Blink's raw fr size (scaling by a power of two commutes
+    // with rounding). Blink sizes adjacent tracks that no item edge separates as one set; Taffy has no sets, so the
+    // carry runs per track.
+    let fr_size_in_units = flex_fraction * LAYOUT_UNITS_PER_PX;
+    let mut leftover = 0.0;
     for track in axis_tracks.iter_mut().filter(|track| track.max_track_sizing_function.is_fr()) {
         let track_flex_factor = track.max_track_sizing_function.0.value();
-        track.base_size = f32_max(track.base_size, track_flex_factor * flex_fraction);
+        let share = fr_size_in_units * track_flex_factor + leftover;
+        // Rust's float-to-int cast truncates toward zero and saturates, as Blink's conversion does.
+        let expanded = (share + f32::EPSILON) as i32;
+        let saturated = expanded == i32::MAX || expanded == i32::MIN;
+        let expanded_size = expanded as f32 / LAYOUT_UNITS_PER_PX;
+        if !saturated && expanded_size >= track.base_size {
+            track.base_size = expanded_size;
+            leftover = f32_max(share - expanded as f32, 0.0);
+        }
     }
 }
+
+/// VIPER-PATCH(grid-fr-carry): Chrome's layout unit, `LayoutUnit`'s `kFixedPointDenominator`
+/// (third_party/blink/renderer/platform/geometry/layout_unit.h): flexible tracks are sized in 1/64 px, as
+/// `GridTrackSizingAlgorithm::ExpandFlexibleTracks` sizes them.
+const LAYOUT_UNITS_PER_PX: f32 = 64.0;
 
 /// 11.7.1. Find the Size of an fr
 /// This algorithm finds the largest size that an fr unit can be without exceeding the target size.
