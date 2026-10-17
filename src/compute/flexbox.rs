@@ -49,6 +49,11 @@ struct FlexItem {
     cross_size_is_transferred: bool,
     /// The box sizing mode of this item
     box_sizing: BoxSizing,
+    // VIPER-PATCH(flex-aspect-ratio): whether a transferred cross size has a content-based minimum: the item's
+    // automatic minimum size in the ratio-dependent axis is its min-content size when that axis's min size is
+    // `auto` and the item is not a scroll container (CSS Box Sizing 4, `aspect-ratio`).
+    /// Whether the item's content can make its transferred cross size larger
+    cross_size_has_content_minimum: bool,
     /// The cross-alignment of this item
     align_self: AlignSelf,
 
@@ -767,6 +772,10 @@ fn generate_anonymous_flex_items(
                 cross_size_is_transferred: aspect_ratio.is_some() && raw_size.cross(constants.dir).is_none(),
                 size_style: child_style.size(),
                 box_sizing: child_style.box_sizing(),
+                // VIPER-PATCH(flex-aspect-ratio): the content-based minimum of a transferred cross size.
+                cross_size_has_content_minimum: child_style.min_size().cross(constants.dir).is_auto()
+                    && !child_style.overflow().x.is_scroll_container()
+                    && !child_style.overflow().y.is_scroll_container(),
                 min_size: child_style
                     .min_size()
                     .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
@@ -1066,7 +1075,22 @@ fn determine_flex_base_size(
             if child_cross_size_is_definite {
                 if let (Some(ratio), Some(cross)) = (child.aspect_ratio, child_known_dimensions.cross(dir)) {
                     child.flex_basis_is_definite = true;
-                    break 'flex_basis if dir.is_row() { cross * ratio } else { cross / ratio };
+                    // VIPER-PATCH(flex-aspect-ratio): the cross size is transferred through the ratio in the box
+                    // that `box-sizing` names (CSS Box Sizing 4, `aspect-ratio`,
+                    // https://drafts.csswg.org/css-sizing-4/#aspect-ratio; Flexbox 1 §9.2 step 3B). Upstream
+                    // transfers the border-box size for every item, so an 80px-tall `content-box` item with a 1px
+                    // border and `aspect-ratio: 2` is 160px wide here and 158px in Chrome.
+                    let (inner_cross, main_padding_border) = if child.box_sizing == BoxSizing::ContentBox {
+                        let cross_padding_border = child.padding.cross_axis_sum(dir) + child.border.cross_axis_sum(dir);
+                        (
+                            cross - cross_padding_border,
+                            child.padding.main_axis_sum(dir) + child.border.main_axis_sum(dir),
+                        )
+                    } else {
+                        (cross, 0.0)
+                    };
+                    let inner_main = if dir.is_row() { inner_cross * ratio } else { inner_cross / ratio };
+                    break 'flex_basis inner_main + main_padding_border;
                 }
             }
 
@@ -1980,11 +2004,49 @@ fn determine_hypothetical_cross_size(
             .maybe_clamp(transferred_min_cross, transferred_max_cross)
             .max(padding_border_sum)
         });
+        // VIPER-PATCH(flex-aspect-ratio): an item whose cross size is transferred through its aspect ratio gets that
+        // size from its used main size here too, as layout with the used main size gives it (Flexbox 1 §9.4 step 7),
+        // or its content's size if larger where its automatic minimum size is content-based
+        // (`cross_size_has_content_minimum`). Upstream measures it without the ratio, so
+        // `flex: 0 0 90px; aspect-ratio: 1` with a 1px border is 2px tall in the line's cross size, which then
+        // ignores it.
+        let child_inner_cross = if child.cross_size_is_transferred && child_cross.is_none() {
+            let transferred = transferred_cross_size(child, constants.dir);
+            if child.cross_size_has_content_minimum {
+                child_inner_cross.max(transferred)
+            } else {
+                transferred
+            }
+        } else {
+            child_inner_cross
+        };
         let child_outer_cross = child_inner_cross + child.margin.cross_axis_sum(constants.dir);
 
         child.hypothetical_inner_size.set_cross(constants.dir, child_inner_cross);
         child.hypothetical_outer_size.set_cross(constants.dir, child_outer_cross);
     }
+}
+
+/// VIPER-PATCH(flex-aspect-ratio): the cross size of an item whose cross size is transferred from its main size
+/// through its aspect ratio, from its used (target) main size, in the box that `box-sizing` names; the body is
+/// upstream commit eb2c9e1a's, moved out of `determine_used_cross_size`.
+fn transferred_cross_size(child: &FlexItem, dir: FlexDirection) -> f32 {
+    // If the cross size is transferred from the main size through the aspect ratio
+    // then it is re-derived from the used (target) main size rather than from the
+    // flex base size before flexing.
+    let box_sizing_adjustment =
+        if child.box_sizing == BoxSizing::ContentBox { (child.padding + child.border).sum_axes() } else { Size::ZERO };
+    let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(dir);
+    let transferred_max_cross = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(dir);
+    let padding_border_sum = child.padding.cross_axis_sum(dir) + child.border.cross_axis_sum(dir);
+    Size::NONE
+        .with_main(dir, Some(child.target_size.main(dir) - box_sizing_adjustment.main(dir)))
+        .maybe_apply_aspect_ratio(child.aspect_ratio)
+        .maybe_add(box_sizing_adjustment)
+        .cross(dir)
+        .maybe_clamp(transferred_min_cross, transferred_max_cross)
+        .unwrap_or(0.0)
+        .max(padding_border_sum)
 }
 
 /// Calculate the base lines of the children.
@@ -2225,33 +2287,16 @@ fn determine_used_cross_size(
                         max_size_ignoring_aspect_ratio.cross(constants.dir),
                     )
                 } else if child.cross_size_is_transferred {
-                    // VIPER-PATCH(flex-aspect-ratio): from upstream commit eb2c9e1a (Nico Burns, MIT).
-                    // If the cross size is transferred from the main size through the aspect ratio
-                    // then it is re-derived from the used (target) main size rather than taken from
-                    // the hypothetical cross size, which was transferred from the flex base size
-                    // before flexing.
-                    let box_sizing_adjustment = if child.box_sizing == BoxSizing::ContentBox {
-                        (child.padding + child.border).sum_axes()
+                    // VIPER-PATCH(flex-aspect-ratio): upstream's transfer, moved to `transferred_cross_size` so that the
+                    // hypothetical cross size uses it too, and no smaller than the content where the automatic minimum
+                    // size is content-based: the hypothetical cross size holds the content's size then. Upstream cuts
+                    // an item with taller content to its ratio size.
+                    let transferred = transferred_cross_size(child, constants.dir);
+                    if child.cross_size_has_content_minimum {
+                        transferred.max(child.hypothetical_inner_size.cross(constants.dir))
                     } else {
-                        Size::ZERO
-                    };
-                    let transferred_min_cross =
-                        child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
-                    let transferred_max_cross =
-                        child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
-                    let padding_border_sum =
-                        child.padding.cross_axis_sum(constants.dir) + child.border.cross_axis_sum(constants.dir);
-                    Size::NONE
-                        .with_main(
-                            constants.dir,
-                            Some(child.target_size.main(constants.dir) - box_sizing_adjustment.main(constants.dir)),
-                        )
-                        .maybe_apply_aspect_ratio(child.aspect_ratio)
-                        .maybe_add(box_sizing_adjustment)
-                        .cross(constants.dir)
-                        .maybe_clamp(transferred_min_cross, transferred_max_cross)
-                        .unwrap_or(0.0)
-                        .max(padding_border_sum)
+                        transferred
+                    }
                 } else {
                     child.hypothetical_inner_size.cross(constants.dir)
                 },
