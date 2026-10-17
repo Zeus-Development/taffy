@@ -469,10 +469,13 @@ pub(super) fn align_item_within_area(
     // Expand auto margins to fill available space
     let auto_margin_count = margin.start.is_none() as u8 + margin.end.is_none() as u8;
     let auto_margin_size = if auto_margin_count > 0 { free_space / auto_margin_count as f32 } else { 0.0 };
-    let resolved_margin = Line {
-        start: margin.start.unwrap_or(auto_margin_size) + baseline_shim,
-        end: margin.end.unwrap_or(auto_margin_size),
-    };
+    // VIPER-PATCH(grid-baseline-margin): the item's own margin is returned, and the baseline shim only moves the
+    // item. Upstream returns the start margin with the shim that moves a baseline-aligned item down to its row's
+    // baseline, so the used margin-top it reports holds the shim (a flex item's holds none). Chrome moves the item by
+    // its baseline offset and reports the item's own margin.
+    let own_margin =
+        Line { start: margin.start.unwrap_or(auto_margin_size), end: margin.end.unwrap_or(auto_margin_size) };
+    let resolved_margin = Line { start: own_margin.start + baseline_shim, end: own_margin.end };
 
     let overflows = resolved_size + non_auto_margin.sum() > grid_area_size;
     let alignment_keyword = resolve_self_alignment_safety(alignment_style, overflows);
@@ -532,5 +535,6 @@ pub(super) fn align_item_within_area(
         start += relative_inset.unwrap_or(0.0);
     }
 
-    (start, resolved_margin)
+    // VIPER-PATCH(grid-baseline-margin): the margin without the baseline shim.
+    (start, own_margin)
 }
