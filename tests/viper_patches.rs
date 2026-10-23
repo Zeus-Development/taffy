@@ -197,7 +197,8 @@ fn an_aspect_ratio_item_grows_to_its_content_unless_its_minimum_is_set() {
 }
 
 // VIPER-PATCH(last-baseline): `align-items` and `align-self: last baseline` in flex and grid containers; block, flex
-// and grid containers report their last baselines (CSS Box Alignment 3 §9, CSS Flexbox 1 §8.5, CSS Grid 2 §11.6).
+// and grid containers report their last baselines (CSS Box Alignment 3 §9, and the Flexbox 1 and Grid 2 Editor's
+// Drafts' container baselines, read 2026-10-23).
 
 /// A line of text, 20px high with its baseline 16px down: a flex row holding a 10 × 16 leaf, whose baseline is
 /// synthesized from the leaf's bottom edge.
@@ -323,11 +324,12 @@ fn first_and_last_baseline_items_form_separate_groups() {
 }
 
 /// A container of `display` holding a one-line block and, after it, a 10 × 40 leaf without a baseline. Its last
-/// baseline is the block's, 16px down: the last item of its last line or row that has a baseline set (CSS Flexbox 1
-/// §8.5 and CSS Grid 2 §11.6, step 3 with "first" and "last" inverted), not one synthesized from the leaf, which
-/// comes last. Beside it, a one-line block with 30px of padding below (34px below its baseline): the group is
-/// 16 + 34 = 50px high and both items sit at the top. From the leaf's bottom edge, the group would be 40 + 34 = 74px
-/// high; aligned at the end, the container would be 10px down.
+/// baseline is the block's, 16px down: the last item of its last line or row that has a baseline set (CSS Flexbox 1 and
+/// CSS Grid 2 Editor's Drafts, "Flex Container Baselines" and "Grid Container Baselines", read 2026-10-23, step 3 with
+/// "first" and "last" inverted), not one synthesized from the leaf, which comes last. Beside it, a one-line block with
+/// 30px of padding below (34px below its baseline): the group is 16 + 34 = 50px high and both items sit at the top.
+/// From the leaf's bottom edge, the group would be 40 + 34 = 74px high; aligned at the end, the container would be 10px
+/// down.
 #[test]
 fn a_containers_last_baseline_comes_from_its_last_item_that_has_one() {
     for display in [Display::Flex, Display::Grid] {
@@ -406,4 +408,61 @@ fn flex_column_items_align_on_synthesized_last_baselines() {
     };
     let root = taffy.new_with_children(column, &[narrow, wide]).unwrap();
     assert_eq!(widths(&mut taffy, root, &[narrow, wide]), [(50.0, 30.0), (50.0, 50.0)]);
+}
+
+/// A group taller than its line takes the `safe` half of its fallback alignment, `safe self-end` (CSS Box Alignment
+/// 3 §4.2, §4.4): a three-line item, 60px high, in a 20px flex line or grid row is start-aligned, where end alignment
+/// would put it 40px above the line.
+#[test]
+fn an_overflowing_last_baseline_group_is_start_aligned() {
+    for display in [Display::Flex, Display::Grid] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let three = paragraph(&mut taffy, 3, 0.0, None);
+        let rows = if display == Display::Grid { vec![length(20.0)] } else { Vec::new() };
+        let container = Style {
+            size: Size { width: auto(), height: length(20.0) },
+            grid_template_rows: rows,
+            ..last_baseline_container(display)
+        };
+        let root = taffy.new_with_children(container, &[three]).unwrap();
+        assert_eq!(heights(&mut taffy, root, &[three, root]), [(0.0, 60.0), (0.0, 20.0)], "{display:?}");
+    }
+}
+
+/// `wrap-reverse` swaps a flex line's cross-start and cross-end, but a last-baseline group takes its items' fallback
+/// alignment resolved to a physical side, `self-end`: the bottom (CSS Box Alignment 3 §9.3). In a 100px line the
+/// shared last baseline is the group's largest descent, 14px, above the bottom: the three-line item sits 86 - 56 =
+/// 30px down and the one-line item 86 - 16 = 70px down. At the top, they would sit at 0 and 40.
+#[test]
+fn a_wrap_reverse_rows_last_baseline_group_stays_at_the_bottom() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let one = paragraph(&mut taffy, 1, 10.0, None);
+    let three = paragraph(&mut taffy, 3, 0.0, None);
+    let container = Style {
+        flex_wrap: FlexWrap::WrapReverse,
+        size: Size { width: auto(), height: length(100.0) },
+        ..last_baseline_container(Display::Flex)
+    };
+    let root = taffy.new_with_children(container, &[one, three]).unwrap();
+    assert_eq!(heights(&mut taffy, root, &[one, three]), [(70.0, 30.0), (30.0, 60.0)]);
+}
+
+/// A container whose first line or row holds only a last-baseline group takes its first baseline from that group
+/// (CSS Flexbox 1 and CSS Grid 2 Editor's Drafts, "Flex Container Baselines" and "Grid Container Baselines", step
+/// 2): a three-line item and, after it, a one-line item with 10px of padding below share a last baseline 56px down,
+/// so a one-line block beside the container in a `baseline` row sits 56 - 16 = 40px down. From the first item's
+/// first baseline, 16px down, it would sit at the top.
+#[test]
+fn a_containers_first_baseline_can_come_from_its_last_baseline_group() {
+    for display in [Display::Flex, Display::Grid] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let three = paragraph(&mut taffy, 3, 0.0, None);
+        let one = paragraph(&mut taffy, 1, 10.0, None);
+        let nested = taffy.new_with_children(last_baseline_container(display), &[three, one]).unwrap();
+        let beside = paragraph(&mut taffy, 1, 0.0, None);
+        let row = Style { display: Display::Flex, align_items: AlignItems::BASELINE, ..Default::default() };
+        let root = taffy.new_with_children(row, &[nested, beside]).unwrap();
+        let expected = [(0.0, 70.0), (40.0, 20.0), (0.0, 70.0)];
+        assert_eq!(heights(&mut taffy, root, &[nested, beside, root]), expected, "{display:?}");
+    }
 }

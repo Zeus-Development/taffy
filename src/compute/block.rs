@@ -637,6 +637,7 @@ fn compute_inner(
         mut intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
+        // VIPER-PATCH(last-baseline): the content's first and last baselines.
         mut baselines,
     ) = perform_final_layout_on_in_flow_children(
         tree,
@@ -1831,5 +1832,6 @@ fn perform_final_layout_on_in_flow_children(
 
     committed_y_offset += resolved_content_box_inset.bottom + bottom_y_margin_offset;
     let content_height = f32_max(0.0, committed_y_offset);
+    // VIPER-PATCH(last-baseline): with the content's baselines.
     (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, baselines)
 }

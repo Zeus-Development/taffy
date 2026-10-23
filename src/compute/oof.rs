@@ -101,14 +101,25 @@ impl OofAlignment {
             AlignItemsKeyword::Center => Self::Center,
             AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::SelfEnd => Self::End,
             // VIPER-PATCH(last-baseline): an absolutely positioned box belongs to no shared alignment context, so
-            // `last baseline` takes its fallback alignment, `self-end` (CSS Box Alignment 3 §4.2), with the box's
-            // own overflow handling.
+            // `last baseline` takes its fallback alignment, `safe self-end` (CSS Box Alignment 3 §4.2); its safety is
+            // `fallback_safety`'s.
             AlignItemsKeyword::LastBaseline => Self::End,
             // The fallback alignment of `baseline` is `start`
             AlignItemsKeyword::Start
             | AlignItemsKeyword::FlexStart
             | AlignItemsKeyword::SelfStart
             | AlignItemsKeyword::Baseline => Self::Start,
+        }
+    }
+
+    // VIPER-PATCH(last-baseline): the `safe` of `last baseline`'s fallback alignment.
+    /// The overflow safety of `alignment`: `Safe` for `last baseline`, whose fallback alignment is `safe self-end`
+    /// (CSS Box Alignment 3 §4.2), else its own.
+    fn fallback_safety(alignment: AlignSelf) -> AlignmentSafety {
+        if alignment.keyword == AlignItemsKeyword::LastBaseline {
+            AlignmentSafety::Safe
+        } else {
+            alignment.safety
         }
     }
 
@@ -557,7 +568,8 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         margin: Line { start: margin.left, end: margin.right },
         static_position: static_position.x,
         alignment: OofAlignment::from_resolved(justify_self),
-        safety: justify_self.safety,
+        // VIPER-PATCH(last-baseline): `last baseline` is `safe`.
+        safety: OofAlignment::fallback_safety(justify_self),
         is_inline: true,
         reversed: direction.is_rtl(),
         is_scroll_axis: container_overflow.x.is_scroll_container(),
@@ -568,7 +580,8 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         margin: Line { start: margin.top, end: margin.bottom },
         static_position: static_position.y,
         alignment: OofAlignment::from_resolved(align_self),
-        safety: align_self.safety,
+        // VIPER-PATCH(last-baseline): `last baseline` is `safe`.
+        safety: OofAlignment::fallback_safety(align_self),
         is_inline: false,
         reversed: false,
         is_scroll_axis: container_overflow.y.is_scroll_container(),

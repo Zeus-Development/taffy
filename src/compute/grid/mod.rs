@@ -930,8 +930,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             first_row_items.find(|item| item.participates_in_baseline_alignment()).unwrap_or(first_item)
         };
 
-        // VIPER-PATCH(last-baseline): without a first-baseline group, the last-baseline group of items that end in
-        // the first row (CSS Grid 2 §11.6, step 2).
+        // VIPER-PATCH(last-baseline): without a first-baseline group, the last-baseline group of items that end in the
+        // first row (step 2 of the Grid 2 Editor's Draft's "Grid Container Baselines", read 2026-10-23).
         let ends_in_first_row = |item: &&GridItem| item.row_indexes.end == first_row + 2;
         let last_group =
             items.iter().filter(ends_in_first_row).find(|item| item.participates_in_last_baseline_alignment());
@@ -943,7 +943,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         }
     };
 
-    // VIPER-PATCH(last-baseline): the container's last baseline (CSS Grid 2 §11.6, "first" and "last" inverted).
+    // VIPER-PATCH(last-baseline): the container's last baseline (the Grid 2 Editor's Draft's "Grid Container
+    // Baselines", "first" and "last" inverted).
     let grid_container_last_baseline = if contain.suppresses_baseline() { None } else { grid_last_baseline(&items) };
 
     // A scroll container's own padding at the end of the content is part of its scrollable
@@ -1444,7 +1445,8 @@ impl DetailedGridItemsInfo {
     }
 }
 
-// VIPER-PATCH(last-baseline): the grid container's last baseline (CSS Grid 2 §11.6, "first" and "last" inverted).
+// VIPER-PATCH(last-baseline): the grid container's last baseline (the Grid 2 Editor's Draft's "Grid Container
+// Baselines", read 2026-10-23, "first" and "last" inverted).
 /// The last baseline of a grid container whose in-flow `items` are laid out, from its border box's top edge, taken
 /// from its last row holding an item: the shared baseline of the row's last-baseline group (items whose areas end in
 /// it), else of its first-baseline group (items whose areas start in it), else the last baseline of the last item in

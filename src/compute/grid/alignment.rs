@@ -398,6 +398,7 @@ pub(super) fn align_and_position_item(
         position,
         inset_vertical,
         margin.vertical_components(),
+        // VIPER-PATCH(last-baseline): the block-axis shims.
         baseline_shims.height,
         Direction::Ltr,
     );
@@ -503,7 +504,13 @@ pub(super) fn align_item_within_area(
         Line { start: own_margin.start + baseline_shims.start, end: own_margin.end + baseline_shims.end };
 
     let overflows = resolved_size + non_auto_margin.sum() > grid_area_size;
-    let alignment_keyword = resolve_self_alignment_safety(alignment_style, overflows);
+    // VIPER-PATCH(last-baseline): the fallback alignment of `last baseline` is `safe self-end`, so an item that
+    // overflows its area is start-aligned (CSS Box Alignment 3 §4.2, §4.4).
+    let alignment_keyword = if alignment_style.keyword == AlignItemsKeyword::LastBaseline && overflows {
+        AlignItemsKeyword::Start
+    } else {
+        resolve_self_alignment_safety(alignment_style, overflows)
+    };
 
     // Compute offset in the axis
     let alignment_based_offset = match alignment_keyword {

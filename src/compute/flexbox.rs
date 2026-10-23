@@ -611,17 +611,19 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
             let item = if constants.dir.is_reverse() { line.items.last() } else { line.items.first() };
             item.map(|child| child.baseline)
         } else {
-            // VIPER-PATCH(last-baseline): the first-baseline group's shared baseline, else the last-baseline
-            // group's (CSS Flexbox 1 §8.5, steps 1 and 2), else the line's first item's, as upstream.
+            // VIPER-PATCH(last-baseline): the first-baseline group's shared baseline, else the last-baseline group's
+            // (steps 1 and 2 of the Flexbox 1 Editor's Draft's "Flex Container Baselines", read 2026-10-23), else the
+            // line's first item's, as upstream.
             let groups = line_shared_baselines(line, &constants);
             groups.start.or(groups.end).or_else(|| line.items.first().map(|child| child.baseline))
         }
     });
 
-    // VIPER-PATCH(last-baseline): the last baseline comes from the endmost line, the visually last as the first
-    // comes from the visually first (CSS Flexbox 1 §8.5 with "first" and "last" inverted). In a row: its
-    // last-baseline group's shared baseline, else its first-baseline group's, else the last item in order that has a
-    // last baseline, else one synthesized from the border box of its endmost item; in a column: the endmost item's.
+    // VIPER-PATCH(last-baseline): the last baseline comes from the endmost line, the visually last as the first comes
+    // from the visually first (the Flexbox 1 Editor's Draft's "Flex Container Baselines", read 2026-10-23, "first" and
+    // "last" inverted). In a row: its last-baseline group's shared baseline, else its first-baseline group's, else the
+    // last item in order that has a last baseline, else one synthesized from the border box of its endmost item; in a
+    // column: the endmost item's.
     let last_line = if constants.is_wrap_reverse { flex_lines.first() } else { flex_lines.last() };
     let last_vertical_baseline = last_line.and_then(|line| {
         let main_end_item = if constants.dir.is_reverse() { line.items.first() } else { line.items.last() };
@@ -2210,6 +2212,7 @@ fn calculate_children_base_lines(
                 baseline.unwrap_or(height)
             };
 
+            // VIPER-PATCH(last-baseline): a last-baseline item's is its last baseline.
             if is_last_baseline {
                 child.last_baseline = baseline + child.margin.top;
             } else {
@@ -2527,6 +2530,7 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
                     free_space,
                     max_baseline,
                     max_baseline_to_bottom_distance,
+                    // VIPER-PATCH(last-baseline): the line's last-baseline group.
                     last_group,
                     constants,
                 );
@@ -2616,13 +2620,16 @@ fn align_flex_items_along_cross_axis(
         }
         // VIPER-PATCH(last-baseline): the items' last baselines coincide, and the group takes its fallback alignment,
         // `safe self-end`, resolved to a physical side (CSS Box Alignment 3 §9.3): the bottom of a row, `wrap-reverse`
-        // or not, and the right of a left-to-right column. A lone item is end-aligned.
+        // or not, and the right of a left-to-right column; a group taller than its line is start-aligned instead, the
+        // `safe` half (§4.4). A lone item is end-aligned.
         AlignItemsKeyword::LastBaseline => {
             let above = child.last_baseline_offset(constants);
-            if cross_axis_should_reverse {
+            let line_cross_size = free_space + child.outer_target_size.cross(constants.dir);
+            let overflows = last_group.sum() > line_cross_size;
+            if cross_axis_should_reverse ^ overflows {
                 last_group.start - above
             } else {
-                free_space + child.outer_target_size.cross(constants.dir) - last_group.end - above
+                line_cross_size - last_group.end - above
             }
         }
         AlignItemsKeyword::Stretch => {

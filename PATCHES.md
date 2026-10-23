@@ -140,11 +140,13 @@ fail there. The second lays it out:
   the line's last-baseline group's shared baseline, else its first-baseline
   group's, else the last item that has a last baseline, else one synthesized
   from the endmost item's border box; a flex column's from its endmost item
-  (CSS Flexbox 1 §8.5); a grid container's from its last row holding an
+  (the Flexbox 1 Editor's Draft, "Flex Container Baselines"); a grid container's from its last row holding an
   item: the row's last-baseline group (items whose areas end in it), else
   the first-baseline group starting in it, else the last item in grid order
   that has a last baseline, grid order traversed from the end, else one
-  synthesized from the last item (CSS Grid 2 §11.6). Step 2 of the first
+  synthesized from the last item (the Grid 2 Editor's Draft, "Grid Container
+  Baselines"; both drafts read 2026-10-23: the published CR texts lack step
+  3, "the item that has a baseline set"). Step 2 of the first
   baselines, a first line's or row's last-baseline group when it has no
   first-baseline group, is added too; without `last baseline` items every
   first baseline is unchanged.
@@ -155,7 +157,9 @@ fail there. The second lays it out:
   resolved in the same pass, so that the items' distances from their last
   baselines to their margin boxes' bottom edges coincide. The group takes
   its fallback alignment, `safe self-end`, resolved to a physical side
-  (§9.3): the bottom of a row, `wrap-reverse` or not. Items with auto margins
+  (§9.3): the bottom of a row, `wrap-reverse` or not; a group taller than
+  its line, or an item taller than its area, is start-aligned (the `safe`
+  half, §4.4). Items with auto margins
   in the axis, or with a block size that depends on their row, do not
   participate, on the terms of first-baseline items.
 - **Groups across a column**: `justify-self: last baseline` in grid (per
@@ -166,10 +170,13 @@ fail there. The second lays it out:
   (§9.1). The group lines those edges up and sits at its self-end: the right
   of a left-to-right container, the left of a right-to-left one. In grid an
   inline shim does it: the group's items are laid out end-aligned once, and
-  each one's shim is its distance from the group's edge.
+  each one's shim is its distance from the group's edge. These inline shims
+  are not part of the columns' track sizing (CSS Grid 2 §12.5 shims both
+  axes): a group wider than an `auto` column overflows it; Viper's register
+  records it.
 - **No group**: absolutely positioned boxes, static positions and
   block-level `justify-self` belong to no shared alignment context and take
-  the fallback alignment (§4.2); a lone item is end-aligned.
+  the fallback alignment, `safe self-end` (§4.2); a lone item is end-aligned.
 
 ## Upstream work evaluated
 
@@ -233,4 +240,4 @@ Each Viper revision that moves its pin to this branch.
 | --- | --- | --- |
 | V13b-2c1 | `3a41d2dc0942002d7f3ff3c876a0269cd4b885e8` | this ledger only |
 | V13b-2c2 | `4241e09fc1543e4aecefb15a8038d56b7625ba77` | `grid-fr-carry`, `grid-baseline-margin`, `flex-aspect-ratio` |
-| V13c-1-c3b | the commit that adds this row | `last-baseline` |
+| V13c-1-c3b | the last commit of the range that adds this row | `last-baseline` |
