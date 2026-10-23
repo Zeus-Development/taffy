@@ -55,6 +55,10 @@ pub enum AlignItemsKeyword {
     Center,
     /// Items are aligned such as their baselines align.
     Baseline,
+    // VIPER-PATCH(last-baseline): `last baseline` (CSS Box Alignment 3 §4.2), which upstream 0.15 lacks: items align
+    // on their last baselines, their group at the end of their line or row.
+    /// Items are aligned such as their last baselines align, with `safe end` as their fallback alignment.
+    LastBaseline,
     /// Stretch to fill the container.
     Stretch,
 }
@@ -178,6 +182,9 @@ impl AlignItems {
     pub const CENTER: Self = Self { keyword: AlignItemsKeyword::Center, safety: AlignmentSafety::Default };
     /// Items are aligned such as their baselines align.
     pub const BASELINE: Self = Self { keyword: AlignItemsKeyword::Baseline, safety: AlignmentSafety::Default };
+    // VIPER-PATCH(last-baseline): the `last baseline` value.
+    /// Items are aligned such as their last baselines align.
+    pub const LAST_BASELINE: Self = Self { keyword: AlignItemsKeyword::LastBaseline, safety: AlignmentSafety::Default };
     /// Stretch to fill the container.
     pub const STRETCH: Self = Self { keyword: AlignItemsKeyword::Stretch, safety: AlignmentSafety::Default };
     /// Like [`AlignItems::START`], but falls back to [`AlignItems::START`] when the
@@ -307,6 +314,14 @@ impl FromCss for AlignItems {
             "self-end" => Ok(Self::SELF_END),
             "center" => Ok(Self::CENTER),
             "baseline" => Ok(Self::BASELINE),
+            // VIPER-PATCH(last-baseline): `<baseline-position>` is `[ first | last ]? baseline`.
+            "first" | "last" => {
+                let pos = input.expect_ident()?.clone();
+                if !pos.eq_ignore_ascii_case("baseline") {
+                    return Err(input.new_unexpected_token_error(Token::Ident(pos)));
+                }
+                Ok(if first.eq_ignore_ascii_case("last") { Self::LAST_BASELINE } else { Self::BASELINE })
+            },
             "stretch" => Ok(Self::STRETCH),
             _ => Err(input.new_unexpected_token_error(Token::Ident(first))),
         }
@@ -481,6 +496,8 @@ const ALIGN_ITEMS_NAMES: &[&str] = &[
     "SelfEnd",
     "Center",
     "Baseline",
+    // VIPER-PATCH(last-baseline): the serde tag of `last baseline`.
+    "LastBaseline",
     "Stretch",
     "SafeStart",
     "SafeEnd",
@@ -518,6 +535,8 @@ impl serde::Serialize for AlignItems {
             (AlignItemsKeyword::Center, AlignmentSafety::Unsafe) => "UnsafeCenter",
             (AlignItemsKeyword::Normal, _) => "Normal",
             (AlignItemsKeyword::Baseline, _) => "Baseline",
+            // VIPER-PATCH(last-baseline): the serde tag of `last baseline`.
+            (AlignItemsKeyword::LastBaseline, _) => "LastBaseline",
             (AlignItemsKeyword::Stretch, _) => "Stretch",
             (AlignItemsKeyword::Start, AlignmentSafety::Safe) => "SafeStart",
             (AlignItemsKeyword::End, AlignmentSafety::Safe) => "SafeEnd",
@@ -551,6 +570,8 @@ impl<'de> serde::Deserialize<'de> for AlignItems {
                     "SelfEnd" => AlignItems::SELF_END,
                     "Center" => AlignItems::CENTER,
                     "Baseline" => AlignItems::BASELINE,
+                    // VIPER-PATCH(last-baseline): the serde tag of `last baseline`.
+                    "LastBaseline" => AlignItems::LAST_BASELINE,
                     "Stretch" => AlignItems::STRETCH,
                     "SafeStart" => AlignItems::SAFE_START,
                     "SafeEnd" => AlignItems::SAFE_END,
@@ -805,6 +826,9 @@ mod tests {
         assert_eq!("self-end".parse::<AlignItems>().unwrap(), AlignItems::SELF_END);
         assert_eq!("baseline".parse::<AlignItems>().unwrap(), AlignItems::BASELINE);
         assert_eq!("stretch".parse::<AlignItems>().unwrap(), AlignItems::STRETCH);
+        // VIPER-PATCH(last-baseline): `first baseline` is `baseline`; `last baseline` is its own value.
+        assert_eq!("first baseline".parse::<AlignItems>().unwrap(), AlignItems::BASELINE);
+        assert_eq!("Last BASELINE".parse::<AlignItems>().unwrap(), AlignItems::LAST_BASELINE);
     }
 
     #[test]
@@ -860,6 +884,11 @@ mod tests {
     fn parse_align_items_rejects_invalid_safe_combos() {
         assert!("safe stretch".parse::<AlignItems>().is_err());
         assert!("safe baseline".parse::<AlignItems>().is_err());
+        // VIPER-PATCH(last-baseline): `<baseline-position>` takes no overflow position, and `first` or `last` needs
+        // `baseline`.
+        assert!("safe last baseline".parse::<AlignItems>().is_err());
+        assert!("last".parse::<AlignItems>().is_err());
+        assert!("first center".parse::<AlignItems>().is_err());
         assert!("safe space-between".parse::<AlignItems>().is_err());
         assert!("safe".parse::<AlignItems>().is_err());
         assert!("safe garbage".parse::<AlignItems>().is_err());
@@ -928,6 +957,8 @@ mod tests {
             (AlignItems::FLEX_END, "\"FlexEnd\""),
             (AlignItems::CENTER, "\"Center\""),
             (AlignItems::BASELINE, "\"Baseline\""),
+            // VIPER-PATCH(last-baseline): the serde tag of `last baseline`.
+            (AlignItems::LAST_BASELINE, "\"LastBaseline\""),
             (AlignItems::STRETCH, "\"Stretch\""),
             (AlignItems::SAFE_START, "\"SafeStart\""),
             (AlignItems::SAFE_END, "\"SafeEnd\""),

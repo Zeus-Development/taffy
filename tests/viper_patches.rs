@@ -195,3 +195,215 @@ fn an_aspect_ratio_item_grows_to_its_content_unless_its_minimum_is_set() {
         assert_eq!(tall_content_item(align, hidden), (50.0, 50.0));
     }
 }
+
+// VIPER-PATCH(last-baseline): `align-items` and `align-self: last baseline` in flex and grid containers; block, flex
+// and grid containers report their last baselines (CSS Box Alignment 3 §9, CSS Flexbox 1 §8.5, CSS Grid 2 §11.6).
+
+/// A line of text, 20px high with its baseline 16px down: a flex row holding a 10 × 16 leaf, whose baseline is
+/// synthesized from the leaf's bottom edge.
+fn text_line(taffy: &mut TaffyTree<()>) -> NodeId {
+    let glyphs =
+        taffy.new_leaf(Style { size: Size { width: length(10.0), height: length(16.0) }, ..Default::default() });
+    let line =
+        Style { display: Display::Flex, size: Size { width: auto(), height: length(20.0) }, ..Default::default() };
+    taffy.new_with_children(line, &[glyphs.unwrap()]).unwrap()
+}
+
+/// A block of `lines` text lines with `padding_bottom`: its last baseline is 20 × (lines - 1) + 16px down.
+fn paragraph(taffy: &mut TaffyTree<()>, lines: usize, padding_bottom: f32, align_self: Option<AlignSelf>) -> NodeId {
+    let children: Vec<NodeId> = (0..lines).map(|_| text_line(taffy)).collect();
+    let padding = Rect { left: zero(), right: zero(), top: zero(), bottom: length(padding_bottom) };
+    let style = Style { display: Display::Block, padding, align_self, ..Default::default() };
+    taffy.new_with_children(style, &children).unwrap()
+}
+
+/// Lays out `root` and returns the `(y, height)` of each of `nodes`.
+fn heights(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(f32, f32)> {
+    taffy.disable_rounding();
+    taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    nodes
+        .iter()
+        .map(|node| taffy.layout(*node).map(|layout| (layout.location.y, layout.size.height)).unwrap())
+        .collect()
+}
+
+/// A container of `display` whose items align on their last baselines.
+fn last_baseline_container(display: Display) -> Style {
+    let columns = if display == Display::Grid { vec![auto(), auto(), auto()] } else { Vec::new() };
+    Style { display, align_items: AlignItems::LAST_BASELINE, grid_template_columns: columns, ..Default::default() }
+}
+
+/// One line with 10px of padding below (last baseline 16, 14px below it) and three lines (last baseline 56, 4px
+/// below it): the group is 56 + 14 = 70px high, and each item's last baseline is 14px above its end, so the
+/// one-line item is 70 - 14 - 16 = 40px down. Aligned at the end instead, the row would be 60px and the item 30px
+/// down.
+#[test]
+fn flex_items_align_on_their_last_baselines() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let one = paragraph(&mut taffy, 1, 10.0, None);
+    let three = paragraph(&mut taffy, 3, 0.0, None);
+    let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[one, three]).unwrap();
+    assert_eq!(heights(&mut taffy, root, &[one, three, root]), [(40.0, 30.0), (0.0, 60.0), (0.0, 70.0)]);
+}
+
+/// The same two items in one grid row: the row is 70px high and the one-line item 40px down.
+#[test]
+fn grid_items_align_on_their_last_baselines() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let one = paragraph(&mut taffy, 1, 10.0, None);
+    let three = paragraph(&mut taffy, 3, 0.0, None);
+    let root = taffy.new_with_children(last_baseline_container(Display::Grid), &[one, three]).unwrap();
+    assert_eq!(heights(&mut taffy, root, &[one, three, root]), [(40.0, 30.0), (0.0, 60.0), (0.0, 70.0)]);
+}
+
+/// A wrapping flex container 10px wide holding a one-line and a two-line block, on two lines, with 5px of padding
+/// below: its last baseline is its last line's last item's, 20 + 36 = 56px down, 9px above its end. Beside it, a
+/// one-line block with 20px of padding below (24px below its baseline): the group is 56 + 24 = 80px high.
+#[test]
+fn a_flex_container_reports_its_last_lines_baseline() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let first = paragraph(&mut taffy, 1, 0.0, None);
+    let second = paragraph(&mut taffy, 2, 0.0, None);
+    let padding = Rect { left: zero(), right: zero(), top: zero(), bottom: length(5.0) };
+    let nested = Style {
+        display: Display::Flex,
+        flex_wrap: FlexWrap::Wrap,
+        padding,
+        size: Size { width: length(10.0), height: auto() },
+        ..Default::default()
+    };
+    let nested = taffy.new_with_children(nested, &[first, second]).unwrap();
+    let beside = paragraph(&mut taffy, 1, 20.0, None);
+    let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[nested, beside]).unwrap();
+    assert_eq!(heights(&mut taffy, root, &[nested, beside, root]), [(0.0, 65.0), (40.0, 40.0), (0.0, 80.0)]);
+}
+
+/// A grid container's last baseline is its last row's: a grid of two rows, a one-line and a two-line block, has
+/// its last baseline 20 + 36 = 56px down, 4px above its end; beside it a one-line block with 20px of padding below.
+#[test]
+fn a_grid_container_reports_its_last_rows_baseline() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let first = paragraph(&mut taffy, 1, 0.0, None);
+    let second = paragraph(&mut taffy, 2, 0.0, None);
+    let nested = Style { display: Display::Grid, ..Default::default() };
+    let nested = taffy.new_with_children(nested, &[first, second]).unwrap();
+    let beside = paragraph(&mut taffy, 1, 20.0, None);
+    let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[nested, beside]).unwrap();
+    assert_eq!(heights(&mut taffy, root, &[nested, beside, root]), [(0.0, 60.0), (40.0, 40.0), (0.0, 80.0)]);
+}
+
+/// An item without a baseline synthesizes its last baseline from its border box's bottom edge: a 30px leaf (0 below
+/// its baseline) beside a one-line block with 10px of padding below (14px below): 30 + 14 = 44px, the block 14px
+/// down. Aligned at the end, the row would be 30px high.
+#[test]
+fn an_item_without_a_baseline_synthesizes_its_last_baseline() {
+    for display in [Display::Flex, Display::Grid] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let leaf = Style { size: Size { width: length(10.0), height: length(30.0) }, ..Default::default() };
+        let leaf = taffy.new_leaf(leaf).unwrap();
+        let one = paragraph(&mut taffy, 1, 10.0, None);
+        let root = taffy.new_with_children(last_baseline_container(display), &[leaf, one]).unwrap();
+        assert_eq!(heights(&mut taffy, root, &[leaf, one, root]), [(0.0, 30.0), (14.0, 30.0), (0.0, 44.0)]);
+    }
+}
+
+/// `first baseline` and `last baseline` items on one line form two groups: the three-line `baseline` item stays at
+/// the start, and the two `last baseline` items share a group 56 + 14 = 70px high.
+#[test]
+fn first_and_last_baseline_items_form_separate_groups() {
+    for display in [Display::Flex, Display::Grid] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let first = paragraph(&mut taffy, 3, 0.0, Some(AlignSelf::BASELINE));
+        let one = paragraph(&mut taffy, 1, 10.0, None);
+        let three = paragraph(&mut taffy, 3, 0.0, None);
+        let root = taffy.new_with_children(last_baseline_container(display), &[first, one, three]).unwrap();
+        let expected = [(0.0, 60.0), (40.0, 30.0), (0.0, 60.0), (0.0, 70.0)];
+        assert_eq!(heights(&mut taffy, root, &[first, one, three, root]), expected);
+    }
+}
+
+/// A container of `display` holding a one-line block and, after it, a 10 × 40 leaf without a baseline. Its last
+/// baseline is the block's, 16px down: the last item of its last line or row that has a baseline set (CSS Flexbox 1
+/// §8.5 and CSS Grid 2 §11.6, step 3 with "first" and "last" inverted), not one synthesized from the leaf, which
+/// comes last. Beside it, a one-line block with 30px of padding below (34px below its baseline): the group is
+/// 16 + 34 = 50px high and both items sit at the top. From the leaf's bottom edge, the group would be 40 + 34 = 74px
+/// high; aligned at the end, the container would be 10px down.
+#[test]
+fn a_containers_last_baseline_comes_from_its_last_item_that_has_one() {
+    for display in [Display::Flex, Display::Grid] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let block = paragraph(&mut taffy, 1, 0.0, None);
+        let leaf = Style { size: Size { width: length(10.0), height: length(40.0) }, ..Default::default() };
+        let leaf = taffy.new_leaf(leaf).unwrap();
+        let columns = if display == Display::Grid { vec![auto(), auto()] } else { Vec::new() };
+        let nested = Style { display, grid_template_columns: columns, ..Default::default() };
+        let nested = taffy.new_with_children(nested, &[block, leaf]).unwrap();
+        let beside = paragraph(&mut taffy, 1, 30.0, None);
+        let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[nested, beside]).unwrap();
+        let expected = [(0.0, 40.0), (0.0, 50.0), (0.0, 50.0)];
+        assert_eq!(heights(&mut taffy, root, &[nested, beside, root]), expected, "{display:?}");
+    }
+}
+
+/// Lays out `root` and returns the `(x, width)` of each of `nodes`.
+fn widths(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(f32, f32)> {
+    taffy.disable_rounding();
+    taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    nodes.iter().map(|node| taffy.layout(*node).map(|layout| (layout.location.x, layout.size.width)).unwrap()).collect()
+}
+
+/// A leaf `width` px wide and 10px high with `margin_right`.
+fn bar(taffy: &mut TaffyTree<()>, width: f32, margin_right: f32) -> NodeId {
+    let margin = Rect { left: zero(), right: length(margin_right), top: zero(), bottom: zero() };
+    let style = Style { size: Size { width: length(width), height: length(10.0) }, margin, ..Default::default() };
+    taffy.new_leaf(style).unwrap()
+}
+
+/// `justify-self: last baseline` in a grid of two 100px columns: items with horizontal text have no baseline across
+/// a column, so one is synthesized at the line-under edge of an axis-compatible writing mode, the border box's left
+/// edge (CSS Box Alignment 3 §9.1), and the items whose areas end in one column share that group (§6.4, §9.2). The
+/// group then takes its fallback alignment, `safe self-end` (§9.3): a 30px item with 10px of margin on the right and
+/// a 50px item in the first column put their left edges 50px into it, the widest outer part flush with its end.
+/// Alone in the second column, a 30px item is end-aligned. Aligned at the end, the 30px item would be at 60.
+#[test]
+fn grid_items_justify_on_their_last_baselines_by_column() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let narrow = bar(&mut taffy, 30.0, 10.0);
+    let wide = bar(&mut taffy, 50.0, 0.0);
+    let alone = bar(&mut taffy, 30.0, 0.0);
+    let place = |row: i16, column: i16| Style {
+        grid_row: Line { start: line(row), end: auto() },
+        grid_column: Line { start: line(column), end: auto() },
+        ..Default::default()
+    };
+    for (node, (row, column)) in [(narrow, (1, 1)), (wide, (2, 1)), (alone, (1, 2))] {
+        let size = taffy.style(node).unwrap().size;
+        let margin = taffy.style(node).unwrap().margin;
+        taffy.set_style(node, Style { size, margin, ..place(row, column) }).unwrap();
+    }
+    let grid = Style {
+        display: Display::Grid,
+        justify_items: AlignItems::LAST_BASELINE,
+        grid_template_columns: vec![length(100.0), length(100.0)],
+        ..Default::default()
+    };
+    let root = taffy.new_with_children(grid, &[narrow, wide, alone]).unwrap();
+    assert_eq!(widths(&mut taffy, root, &[narrow, wide, alone]), [(50.0, 30.0), (50.0, 50.0), (170.0, 30.0)]);
+}
+
+/// `align-items: last baseline` in a flex column 100px wide: as in a grid column, the items' baselines are
+/// synthesized at their border boxes' left edges (CSS Box Alignment 3 §9.1), so a 30px and a 50px item both start
+/// 50px in. Aligned at the end, the 30px item would be at 70.
+#[test]
+fn flex_column_items_align_on_synthesized_last_baselines() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let narrow = bar(&mut taffy, 30.0, 0.0);
+    let wide = bar(&mut taffy, 50.0, 0.0);
+    let column = Style {
+        flex_direction: FlexDirection::Column,
+        size: Size { width: length(100.0), height: auto() },
+        ..last_baseline_container(Display::Flex)
+    };
+    let root = taffy.new_with_children(column, &[narrow, wide]).unwrap();
+    assert_eq!(widths(&mut taffy, root, &[narrow, wide]), [(50.0, 30.0), (50.0, 50.0)]);
+}

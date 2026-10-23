@@ -493,7 +493,8 @@ pub(super) fn align_item_within_area(
                 resolved_margin.start
             }
         }
-        AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd => {
+        // VIPER-PATCH(last-baseline): until last-baseline groups are laid out, `last baseline` is `end`.
+        AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::LastBaseline => {
             if direction.is_rtl() {
                 resolved_margin.start
             } else {

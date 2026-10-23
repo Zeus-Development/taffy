@@ -308,7 +308,12 @@ impl AxisStaticPosition {
         /// aligns the box to. Normal and Stretch (and anything else that is not an end or
         /// center alignment) fall back to start-alignment for static-position purposes.
         fn edge_for(keyword: AlignItemsKeyword, axis_is_rtl: bool) -> AxisStaticEdge {
-            let start_position = !matches!(keyword, AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd) ^ axis_is_rtl;
+            // VIPER-PATCH(last-baseline): a static position belongs to no shared alignment context, so `last baseline`
+            // takes its fallback alignment, `end` (CSS Box Alignment 3 §4.2).
+            let start_position = !matches!(
+                keyword,
+                AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::LastBaseline
+            ) ^ axis_is_rtl;
             match keyword {
                 AlignItemsKeyword::Center => AxisStaticEdge::Center,
                 _ if start_position => AxisStaticEdge::Start,

@@ -2482,7 +2482,8 @@ fn align_flex_items_along_cross_axis(
                 0.0
             }
         }
-        AlignItemsKeyword::End => {
+        // VIPER-PATCH(last-baseline): until last-baseline groups are laid out, `last baseline` is `end`.
+        AlignItemsKeyword::End | AlignItemsKeyword::LastBaseline => {
             if cross_axis_should_reverse {
                 0.0
             } else {
@@ -2962,14 +2963,22 @@ fn collect_oof_candidates(
         let cross_edge_for = |keyword: AlignItemsKeyword| {
             let start_position = match keyword {
                 AlignItemsKeyword::Start | AlignItemsKeyword::Baseline => !cross_is_rtl,
-                AlignItemsKeyword::End => cross_is_rtl,
+                // VIPER-PATCH(last-baseline): an absolutely positioned item belongs to no shared alignment context,
+                // so `last baseline` takes its fallback alignment, `end` (CSS Box Alignment 3 §4.2).
+                AlignItemsKeyword::End | AlignItemsKeyword::LastBaseline => cross_is_rtl,
                 _ => true,
             };
             match (keyword, cross_axis_flex_start_reversed) {
                 // Stretch alignment does not apply to absolutely positioned items
                 // See "Example 3" at https://www.w3.org/TR/css-flexbox-1/#abspos-items
                 // Note: Stretch should be FlexStart not Start when we support both
-                (AlignItemsKeyword::Start | AlignItemsKeyword::End | AlignItemsKeyword::Baseline, _) => {
+                (
+                    AlignItemsKeyword::Start
+                    | AlignItemsKeyword::End
+                    | AlignItemsKeyword::Baseline
+                    | AlignItemsKeyword::LastBaseline,
+                    _,
+                ) => {
                     if start_position {
                         AxisStaticEdge::Start
                     } else {

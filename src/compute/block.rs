@@ -1642,14 +1642,19 @@ fn perform_final_layout_on_in_flow_children(
                 let (container_start, free_x_space) =
                     (resolved_content_box_inset.left, container_inner_width - item_outer_width);
 
-                let keyword = if matches!(justify_self.safety, AlignmentSafety::Safe) && free_x_space < 0.0 {
-                    AlignItemsKeyword::Start
-                } else {
-                    justify_self.keyword
-                };
+                // VIPER-PATCH(last-baseline): the fallback alignment of `last baseline` is `safe self-end`.
+                let is_safe = matches!(justify_self.safety, AlignmentSafety::Safe)
+                    || justify_self.keyword == AlignItemsKeyword::LastBaseline;
+                let keyword =
+                    if is_safe && free_x_space < 0.0 { AlignItemsKeyword::Start } else { justify_self.keyword };
                 let align_to_end = match keyword {
                     AlignItemsKeyword::Center => None,
-                    AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::SelfEnd => Some(true),
+                    // VIPER-PATCH(last-baseline): a block-level box belongs to no shared alignment context in the
+                    // inline axis, so `last baseline` takes its fallback alignment, `safe self-end` (CSS Box Alignment 3 §4.2).
+                    AlignItemsKeyword::End
+                    | AlignItemsKeyword::FlexEnd
+                    | AlignItemsKeyword::SelfEnd
+                    | AlignItemsKeyword::LastBaseline => Some(true),
                     _ => Some(false),
                 };
                 let offset = match align_to_end {

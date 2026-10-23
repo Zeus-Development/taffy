@@ -100,6 +100,10 @@ impl OofAlignment {
             AlignItemsKeyword::Stretch => Self::Stretch,
             AlignItemsKeyword::Center => Self::Center,
             AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::SelfEnd => Self::End,
+            // VIPER-PATCH(last-baseline): an absolutely positioned box belongs to no shared alignment context, so
+            // `last baseline` takes its fallback alignment, `self-end` (CSS Box Alignment 3 §4.2), with the box's
+            // own overflow handling.
+            AlignItemsKeyword::LastBaseline => Self::End,
             // The fallback alignment of `baseline` is `start`
             AlignItemsKeyword::Start
             | AlignItemsKeyword::FlexStart
