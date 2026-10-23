@@ -59,6 +59,7 @@ Branch: viper/taffy-0.15.0
 | `grid-fr-carry` | fr tracks sized in layout units with Blink's carried remainder (`ExpandFlexibleTracks`) | `adr:layout-grid-fr-remainder` | fork: `tests/viper_patches.rs` `fr_tracks_carry_their_remainder`, `fr_tracks_never_sum_to_more_than_the_container`; Viper: `viper-layout::grid fr_tracks_carry_their_remainder_as_blink_does` | MIT (Viper's own change; the rule follows Chromium's BSD-licensed `grid_track_sizing_algorithm.cc`, no code copied) | candidate; never offered without the owner |
 | `grid-baseline-margin` | a baseline-aligned grid item's used margin is its own, without the baseline shim | `adr:layout-grid-baseline-margin` | fork: `a_baseline_aligned_grid_item_keeps_its_own_margin`; Viper: `viper-layout::alignment a_baseline_aligned_grid_items_margin_is_its_own` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `flex-aspect-ratio` | a flex item's automatic sizes follow its aspect ratio from its used main size and from a definite cross size, in the `box-sizing` box | `adr:layout-flex-aspect-ratio` | fork: `a_flexed_items_cross_size_follows_its_ratio`, `a_stretched_cross_size_goes_through_the_ratio_in_the_content_box`, `a_columns_stretched_width_goes_through_the_ratio_in_the_content_box`, `an_aspect_ratio_item_grows_to_its_content_unless_its_minimum_is_set`; Viper: `viper-layout::flex_grid flex_items_size_through_their_aspect_ratio_in_their_box_sizing_box` | MIT; its first commit is the `src/compute/flexbox.rs` change of upstream commit `eb2c9e1a69e9bf79870758535c2920ccbcee4961` by Nico Burns, taken unchanged apart from the markers; its second is Viper's | candidate; never offered without the owner (the upstream part is upstream's own work in progress) |
+| `last-baseline` | `last baseline` in `align-items`, `align-self`, `justify-items` and `justify-self` of flex and grid items; block, flex and grid containers report their last baselines | `adr:layout-last-baseline` | fork: `flex_items_align_on_their_last_baselines`, `grid_items_align_on_their_last_baselines`, `a_flex_container_reports_its_last_lines_baseline`, `a_grid_container_reports_its_last_rows_baseline`, `an_item_without_a_baseline_synthesizes_its_last_baseline`, `first_and_last_baseline_items_form_separate_groups`, `a_containers_last_baseline_comes_from_its_last_item_that_has_one`, `grid_items_justify_on_their_last_baselines_by_column`, `flex_column_items_align_on_synthesized_last_baselines`, and the parser tests in `src/style/alignment.rs`; Viper: `viper-layout::alignment flex_and_grid_items_align_on_their_last_baselines` | MIT; adapted from upstream work in progress by Nico Burns (Taffy's maintainer), commits `2d469f25069288b023717e112dc7f4423bf6d0ad` ("Output last baselines from all built-in layout algorithms") and `bbea180faea4baa11d66b64e6fbd1b837d619829` to `7846613e2c27538ff5b586dafc0e5673d0986c85` (last-baseline alignment), attribution kept; re-applied on 0.15.0 with Viper's changes | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -122,6 +123,54 @@ reports it.
    ratio size), and an explicit minimum or a scroll container keeps the
    ratio size.
 
+### `last-baseline`
+
+Two commits. The first adds the keyword (`AlignItemsKeyword::LastBaseline`,
+`AlignItems::LAST_BASELINE`, parsed from `last baseline`, `first baseline`
+parsed as `baseline`, a serde tag; CSS Box Alignment 3 §4.2) laid out as its
+fallback alignment, `safe self-end`, everywhere, with the fork tests, which
+fail there. The second lays it out:
+
+- **Containers' last baselines** (`Baselines.last`, which 0.15.0 leaves
+  empty for its own algorithms), each rule its specification's first-baseline
+  rule with "first" and "last" inverted: a block container's is its last
+  in-flow child's that has one (CSS 2.1 §10.8.1, CSS Box Alignment 3 §9.1;
+  `src/compute/block.rs`); a flex row's comes from its endmost line, the
+  visually last as 0.15.0 takes the visually first for the first baseline:
+  the line's last-baseline group's shared baseline, else its first-baseline
+  group's, else the last item that has a last baseline, else one synthesized
+  from the endmost item's border box; a flex column's from its endmost item
+  (CSS Flexbox 1 §8.5); a grid container's from its last row holding an
+  item: the row's last-baseline group (items whose areas end in it), else
+  the first-baseline group starting in it, else the last item in grid order
+  that has a last baseline, grid order traversed from the end, else one
+  synthesized from the last item (CSS Grid 2 §11.6). Step 2 of the first
+  baselines, a first line's or row's last-baseline group when it has no
+  first-baseline group, is added too; without `last baseline` items every
+  first baseline is unchanged.
+- **Last-baseline sharing groups** (CSS Box Alignment 3 §6.4, §9.2, §9.3):
+  in flex, per line (`src/compute/flexbox.rs`), as tall as the largest parts
+  above and below the shared baseline; in grid, per row the item's area ends
+  in (`src/compute/grid/`), with an end shim beside the first-baseline shim,
+  resolved in the same pass, so that the items' distances from their last
+  baselines to their margin boxes' bottom edges coincide. The group takes
+  its fallback alignment, `safe self-end`, resolved to a physical side
+  (§9.3): the bottom of a row, `wrap-reverse` or not. Items with auto margins
+  in the axis, or with a block size that depends on their row, do not
+  participate, on the terms of first-baseline items.
+- **Groups across a column**: `justify-self: last baseline` in grid (per
+  column the item's area ends in) and `align-self: last baseline` in a flex
+  column. Horizontal text has no baseline in that axis, so one is
+  synthesized from the border box at the line-under edge of the
+  axis-compatible writing mode, `vertical-lr` or `vertical-rl`: the left edge
+  (§9.1). The group lines those edges up and sits at its self-end: the right
+  of a left-to-right container, the left of a right-to-left one. In grid an
+  inline shim does it: the group's items are laid out end-aligned once, and
+  each one's shim is its distance from the group's edge.
+- **No group**: absolutely positioned boxes, static positions and
+  block-level `justify-self` belong to no shared alignment context and take
+  the fallback alignment (§4.2); a lone item is end-aligned.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -132,6 +181,20 @@ Upstream work in progress read on 2026-10-17 for these patches (upstream
 - `4fe98fa9` (`grid-aspect-ratio-height`): a grid container's own aspect
   ratio; no Viper register entry names it. Not taken.
 - `a9d478ca` (floats shrink-to-fit): left for Viper's float work. Not taken.
+
+Read on 2026-10-19 for `last-baseline`:
+
+- `2d469f25069288b023717e112dc7f4423bf6d0ad` (containers' last baselines,
+  1 commit) and `bbea180faea4baa11d66b64e6fbd1b837d619829` to
+  `7846613e2c27538ff5b586dafc0e5673d0986c85` (the alignment, 4 commits),
+  on a base 59 commits older than 0.15.0: adapted, not cherry-picked (they conflict in
+  `src/compute/block.rs`, and 0.15.0 still resolves the grid's
+  first-baseline shims while the columns are sized). Their test fixtures,
+  `CHANGELOG.md` and yoga benchmark helpers are not taken.
+- The same work's later fixes, up to
+  `c568fe05c3ebf9f3025e829639d7ec62d23ad032` (9 commits): read for cases;
+  its rules for reversed directions (the main-end item) and for the grid's
+  end-most row are part of the patch. Not taken as commits.
 
 ## Rebase procedure (fork side)
 
@@ -169,4 +232,5 @@ Each Viper revision that moves its pin to this branch.
 | Viper task | Pinned commit | Change |
 | --- | --- | --- |
 | V13b-2c1 | `3a41d2dc0942002d7f3ff3c876a0269cd4b885e8` | this ledger only |
-| V13b-2c2 | the commit that adds this row | `grid-fr-carry`, `grid-baseline-margin`, `flex-aspect-ratio` |
+| V13b-2c2 | `4241e09fc1543e4aecefb15a8038d56b7625ba77` | `grid-fr-carry`, `grid-baseline-margin`, `flex-aspect-ratio` |
+| V13c-1-c3b | the commit that adds this row | `last-baseline` |
