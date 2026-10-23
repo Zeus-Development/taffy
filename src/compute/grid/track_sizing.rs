@@ -455,21 +455,53 @@ fn resolve_item_baselines(
     items: &mut [GridItem],
     inner_node_size: Size<Option<f32>>,
 ) {
+    // VIPER-PATCH(last-baseline): first-baseline items, then last-baseline items.
+    resolve_baseline_group_shims(tree, axis, items, inner_node_size, false);
+    resolve_baseline_group_shims(tree, axis, items, inner_node_size, true);
+}
+
+// VIPER-PATCH(last-baseline): the shims of one kind of baseline-sharing group. A first-baseline item belongs to the
+// group of the row its grid area starts in, and is shimmed at the top so that the items' first baselines coincide;
+// a last-baseline item belongs to the group of the row its area ends in, and is shimmed at the bottom so that the
+// distances from the items' last baselines to their margin boxes' bottom edges coincide (CSS Box Alignment 3 §9.2,
+// §9.3).
+/// Shims the items of `last`-baseline (else first-baseline) sharing groups.
+fn resolve_baseline_group_shims(
+    tree: &mut impl LayoutPartialTree,
+    axis: AbstractAxis,
+    items: &mut [GridItem],
+    inner_node_size: Size<Option<f32>>,
+    last: bool,
+) {
+    let participates = |item: &GridItem| {
+        if last {
+            item.participates_in_last_baseline_alignment()
+        } else {
+            item.participates_in_baseline_alignment()
+        }
+    };
     // Sort items by track in the other axis (row) start position so that we can iterate items in groups which
     // are in the same track in the other axis (row)
     let other_axis = axis.other();
+    let group_line = |item: &GridItem| {
+        let placement = item.placement(other_axis);
+        if last {
+            placement.end
+        } else {
+            placement.start
+        }
+    };
     let mut items: Vec<&mut GridItem> = items.iter_mut().collect();
-    items.sort_by_key(|item| item.placement(other_axis).start);
+    items.sort_by_key(|item| group_line(item));
 
     // Iterate over grid rows
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
         // Get the row index of the current row
-        let current_row = remaining_items[0].placement(other_axis).start;
+        let current_row = group_line(remaining_items[0]);
 
         // Find the item index of the first item that is in a different row (or None if we've reached the end of the list)
-        let next_row_first_item =
-            remaining_items.iter().position(|item| item.placement(other_axis).start != current_row);
+        let next_row_first_item = remaining_items.iter().position(|item| group_line(item) != current_row);
 
         // Use this index to split the `remaining_items` slice in two slices:
         //    - A `row_items` slice containing the items (that start) in the current row
@@ -488,14 +520,15 @@ fn resolve_item_baselines(
         // Count how many items in *this row* are baseline aligned
         // If a row has one or zero items participating in baseline alignment then baseline alignment is a no-op
         // for those items and we skip further computations for that row
-        let row_baseline_item_count = row_items.iter().filter(|item| item.participates_in_baseline_alignment()).count();
+        // VIPER-PATCH(last-baseline): in this kind of group.
+        let row_baseline_item_count = row_items.iter().filter(|item| participates(item)).count();
         if row_baseline_item_count <= 1 {
             continue;
         }
 
         // Compute the baselines of all items in the row participating in baseline alignment
         for item in row_items.iter_mut() {
-            if !item.participates_in_baseline_alignment() {
+            if !participates(item) {
                 continue;
             }
 
@@ -508,7 +541,9 @@ fn resolve_item_baselines(
                 Line::FALSE,
             );
 
-            let baseline = measured_size_and_baselines.baselines.first;
+            // VIPER-PATCH(last-baseline): a last-baseline item's last baseline.
+            let baselines = measured_size_and_baselines.baselines;
+            let baseline = if last { baselines.last } else { baselines.first };
             let height = measured_size_and_baselines.size.height;
 
             // Scroll containers' baselines are determined from their content as if scrolled to the
@@ -520,9 +555,30 @@ fn resolve_item_baselines(
                 baseline.unwrap_or(height)
             };
 
-            item.baseline = Some(
-                baseline + item.margin.top.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis)),
-            );
+            // VIPER-PATCH(last-baseline): a last-baseline item's distance from its last baseline to its margin box's
+            // bottom edge.
+            let basis = inner_node_size.width;
+            if last {
+                let margin = item.margin.bottom.resolve_or_zero(basis, |val, basis| tree.calc(val, basis));
+                item.last_baseline_descent = height - baseline + margin;
+            } else {
+                item.baseline =
+                    Some(baseline + item.margin.top.resolve_or_zero(basis, |val, basis| tree.calc(val, basis)));
+            }
+        }
+
+        // VIPER-PATCH(last-baseline): a last-baseline group is shimmed at the bottom, by its largest descent.
+        if last {
+            let row_max_descent = row_items
+                .iter()
+                .filter(|item| participates(item))
+                .map(|item| item.last_baseline_descent)
+                .fold(0.0, f32_max);
+            for item in row_items.iter_mut().filter(|item| participates(item)) {
+                item.last_baseline_shim = row_max_descent - item.last_baseline_descent;
+                item.known_dimensions_cache = None;
+            }
+            continue;
         }
 
         // Compute the max baseline of all items in the row participating in baseline alignment

@@ -5,7 +5,8 @@ use crate::compute::grid::OriginZeroLine;
 use crate::geometry::AbstractAxis;
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{AlignItems, AlignSelf, AvailableSpace, Dimension, LengthPercentageAuto, Overflow};
-use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
+// VIPER-PATCH(last-baseline): `Baselines` for the final baselines.
+use crate::tree::{Baselines, LayoutPartialTree, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
 use crate::util::sys::f32_max;
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 use crate::{AlignItemsKeyword, BoxSizing, GridItemStyle, LengthPercentage};
@@ -68,6 +69,14 @@ pub(in super::super) struct GridItem {
     /// Shim for baseline alignment that acts like an extra top margin
     /// TODO: Support last baseline and vertical text baselines
     pub baseline_shim: f32,
+    // VIPER-PATCH(last-baseline): the last-baseline counterparts of `baseline` and `baseline_shim`.
+    /// The distance from the item's last baseline to its margin box's bottom edge, measured while the rows are sized
+    pub last_baseline_descent: f32,
+    /// Shim for last-baseline alignment that acts like an extra bottom margin
+    pub last_baseline_shim: f32,
+    /// The item's first and last baselines from its final layout, from its border box's top edge. Used to compute
+    /// the container's last baseline.
+    pub final_baselines: Baselines,
 
     /// The item's definite row-start and row-end (same as `row` field, except in a different coordinate system)
     /// (as indexes into the Vec<GridTrack> stored in a grid's AbstractAxisTracks)
@@ -138,6 +147,10 @@ impl GridItem {
             justify_self: style.justify_self().unwrap_or(parent_justify_items),
             baseline: None,
             baseline_shim: 0.0,
+            // VIPER-PATCH(last-baseline): set while the rows are sized and the items laid out.
+            last_baseline_descent: 0.0,
+            last_baseline_shim: 0.0,
+            final_baselines: Baselines::NONE,
             row_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             column_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             crosses_flexible_row: false,            // Properly initialised later
@@ -178,6 +191,26 @@ impl GridItem {
         self.align_self.keyword == AlignItemsKeyword::Baseline
             && !self.has_auto_block_margin()
             && !self.has_cyclic_block_size_dependency()
+    }
+
+    // VIPER-PATCH(last-baseline): items with `align-self: last baseline` form the last-baseline sharing group of the
+    // row their grid area ends in (CSS Box Alignment 3 §9.3), on the same terms as first-baseline items.
+    /// Returns true if the item participates in last-baseline alignment: it has `align-self: last baseline`
+    /// and neither of its block-axis margins are `auto`.
+    #[inline(always)]
+    pub fn participates_in_last_baseline_alignment(&self) -> bool {
+        self.align_self.keyword == AlignItemsKeyword::LastBaseline
+            && !self.has_auto_block_margin()
+            && !self.has_cyclic_block_size_dependency()
+    }
+
+    // VIPER-PATCH(last-baseline): the inline-axis counterpart, for `justify-self: last baseline`.
+    /// Returns true if the item participates in last-baseline alignment in the inline axis: it has
+    /// `justify-self: last baseline` and neither of its inline-axis margins are `auto`.
+    pub fn participates_in_inline_last_baseline_alignment(&self) -> bool {
+        self.justify_self.keyword == AlignItemsKeyword::LastBaseline
+            && !self.margin.left.is_auto()
+            && !self.margin.right.is_auto()
     }
 
     /// This item's placement in the specified axis in OriginZero coordinates
@@ -528,7 +561,9 @@ impl GridItem {
             right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
                 + self.baseline_shim,
-            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis)),
+            // VIPER-PATCH(last-baseline): the last-baseline shim, below.
+            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
+                + self.last_baseline_shim,
         }
         .sum_axes()
     }
@@ -640,7 +675,10 @@ impl GridItem {
             width: available_space.width.map(|width| f32_max(width - margin.horizontal_axis_sum(), 0.0)),
             height: available_space
                 .height
-                .map(|height| f32_max(height - margin.vertical_axis_sum() - self.baseline_shim, 0.0)),
+                // VIPER-PATCH(last-baseline): less the last-baseline shim too.
+                .map(|height| {
+                    f32_max(height - margin.vertical_axis_sum() - self.baseline_shim - self.last_baseline_shim, 0.0)
+                }),
         }
     }
 

@@ -110,6 +110,12 @@ struct FlexItem {
 
     /// The position of the bottom edge of this item
     baseline: f32,
+    // VIPER-PATCH(last-baseline): the item's last baseline, beside its first.
+    /// The position of this item's last baseline: from its margin box's top edge while lines are aligned, then
+    /// from the container's border box
+    last_baseline: f32,
+    /// Whether the item's layout reported a last baseline (else `last_baseline` is synthesized from its border box)
+    has_last_baseline: bool,
 
     /// A temporary value for the main offset
     ///
@@ -141,6 +147,54 @@ impl FlexItem {
             && !self.margin_is_auto.cross_start(dir)
             && !self.margin_is_auto.cross_end(dir)
     }
+
+    // VIPER-PATCH(last-baseline): items with `align-self: last baseline` form their line's last-baseline sharing
+    // group (CSS Box Alignment 3 §6.4, §9.2) on the terms of first-baseline items: not with an `auto` cross-axis
+    // margin, which takes the free space before alignment (CSS Flexbox 1 §8.1).
+    /// Returns true if the item participates in last-baseline alignment: it has `align-self: last baseline` and
+    /// neither of its cross-axis margins are `auto`.
+    fn participates_in_last_baseline_alignment(&self, dir: FlexDirection) -> bool {
+        self.align_self.keyword == AlignItemsKeyword::LastBaseline
+            && !self.margin_is_auto.cross_start(dir)
+            && !self.margin_is_auto.cross_end(dir)
+    }
+
+    /// The distance from the item's margin box's top edge (left edge in columns) to its last baseline while lines
+    /// are aligned. Horizontal text has no baseline across a column, so it is synthesized from the border box at the
+    /// line-under edge of the axis-compatible writing mode, `vertical-lr` or `vertical-rl`: the left edge (CSS Box
+    /// Alignment 3 §9.1).
+    fn last_baseline_offset(&self, constants: &AlgoConstants) -> f32 {
+        if constants.is_row {
+            self.last_baseline
+        } else {
+            self.margin.left
+        }
+    }
+}
+
+// VIPER-PATCH(last-baseline): the extent of a line's last-baseline sharing group.
+/// The largest distance from an item's margin-box cross-start edge to its last baseline (`start`), and from that
+/// baseline to its margin-box cross-end edge (`end`), over the line's items that participate in last-baseline
+/// alignment, given each item's outer cross size.
+fn last_baseline_group(
+    items: &[FlexItem],
+    constants: &AlgoConstants,
+    outer_cross: impl Fn(&FlexItem) -> f32,
+) -> Line<f32> {
+    let participants = items.iter().filter(|item| item.participates_in_last_baseline_alignment(constants.dir));
+    participants.fold(Line { start: 0.0, end: 0.0 }, |group, item| {
+        let above = item.last_baseline_offset(constants);
+        Line { start: group.start.max(above), end: group.end.max(outer_cross(item) - above) }
+    })
+}
+
+// VIPER-PATCH(last-baseline): the shared baselines of a row's two groups.
+/// The first baseline shared by the line's first-baseline group (`start`) and the last baseline shared by its
+/// last-baseline group (`end`), from the container's border box, once the items are laid out.
+fn line_shared_baselines(line: &FlexLine, constants: &AlgoConstants) -> Line<Option<f32>> {
+    let first = line.items.iter().find(|item| item.participates_in_baseline_alignment(constants.dir));
+    let last = line.items.iter().find(|item| item.participates_in_last_baseline_alignment(constants.dir));
+    Line { start: first.map(|item| item.baseline), end: last.map(|item| item.last_baseline) }
 }
 
 /// A line of [`FlexItem`] used for intermediate computation
@@ -557,18 +611,32 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
             let item = if constants.dir.is_reverse() { line.items.last() } else { line.items.first() };
             item.map(|child| child.baseline)
         } else {
-            line.items
-                .iter()
-                .find(|item| item.participates_in_baseline_alignment(constants.dir))
-                .or_else(|| line.items.iter().next())
-                .map(|child| child.baseline)
+            // VIPER-PATCH(last-baseline): the first-baseline group's shared baseline, else the last-baseline
+            // group's (CSS Flexbox 1 §8.5, steps 1 and 2), else the line's first item's, as upstream.
+            let groups = line_shared_baselines(line, &constants);
+            groups.start.or(groups.end).or_else(|| line.items.first().map(|child| child.baseline))
         }
+    });
+
+    // VIPER-PATCH(last-baseline): the last baseline comes from the endmost line, the visually last as the first
+    // comes from the visually first (CSS Flexbox 1 §8.5 with "first" and "last" inverted). In a row: its
+    // last-baseline group's shared baseline, else its first-baseline group's, else the last item in order that has a
+    // last baseline, else one synthesized from the border box of its endmost item; in a column: the endmost item's.
+    let last_line = if constants.is_wrap_reverse { flex_lines.first() } else { flex_lines.last() };
+    let last_vertical_baseline = last_line.and_then(|line| {
+        let main_end_item = if constants.dir.is_reverse() { line.items.first() } else { line.items.last() };
+        if constants.is_column {
+            return main_end_item.map(|child| child.last_baseline);
+        }
+        let groups = line_shared_baselines(line, &constants);
+        let with_baseline = || line.items.iter().rev().find(|child| child.has_last_baseline);
+        groups.end.or(groups.start).or_else(|| with_baseline().or(main_end_item).map(|child| child.last_baseline))
     });
 
     let mut output = LayoutOutput::from_sizes_and_baselines(
         constants.container_size,
         inflow_overflow_rect,
-        Baselines::from_first(first_vertical_baseline),
+        Baselines { first: first_vertical_baseline, last: last_vertical_baseline },
     );
     output.oof_candidates = candidates;
     output.oof_positioning_area =
@@ -825,6 +893,9 @@ fn generate_anonymous_flex_items(
                 content_flex_fraction: 0.0,
 
                 baseline: 0.0,
+                // VIPER-PATCH(last-baseline): measured with the first.
+                last_baseline: 0.0,
+                has_last_baseline: false,
 
                 offset_main: 0.0,
                 offset_cross: 0.0,
@@ -2069,13 +2140,19 @@ fn calculate_children_base_lines(
         // If a flex line has one or zero items participating in baseline alignment then baseline alignment is a no-op so we skip
         let line_baseline_child_count =
             line.items.iter().filter(|child| child.participates_in_baseline_alignment(constants.dir)).count();
-        if line_baseline_child_count <= 1 {
+        // VIPER-PATCH(last-baseline): the same for the line's last-baseline group.
+        let line_last_baseline_child_count =
+            line.items.iter().filter(|child| child.participates_in_last_baseline_alignment(constants.dir)).count();
+        if line_baseline_child_count <= 1 && line_last_baseline_child_count <= 1 {
             continue;
         }
 
         for child in line.items.iter_mut() {
             // Only calculate baselines for children participating in baseline alignment
-            if !child.participates_in_baseline_alignment(constants.dir) {
+            // VIPER-PATCH(last-baseline): or in last-baseline alignment.
+            let is_last_baseline = child.participates_in_last_baseline_alignment(constants.dir);
+            let group_count = if is_last_baseline { line_last_baseline_child_count } else { line_baseline_child_count };
+            if !(child.participates_in_baseline_alignment(constants.dir) || is_last_baseline) || group_count <= 1 {
                 continue;
             }
 
@@ -2118,7 +2195,10 @@ fn calculate_children_base_lines(
                 },
             );
 
-            let baseline = measured_size_and_baselines.baselines.first;
+            // VIPER-PATCH(last-baseline): a last-baseline item measures its last baseline, synthesized from its
+            // border box's bottom edge when it has none, as its first.
+            let baselines = measured_size_and_baselines.baselines;
+            let baseline = if is_last_baseline { baselines.last } else { baselines.first };
             let height = measured_size_and_baselines.size.height;
 
             // Scroll containers' baselines are determined from their content as if scrolled to the
@@ -2130,7 +2210,11 @@ fn calculate_children_base_lines(
                 baseline.unwrap_or(height)
             };
 
-            child.baseline = baseline + child.margin.top;
+            if is_last_baseline {
+                child.last_baseline = baseline + child.margin.top;
+            } else {
+                child.baseline = baseline + child.margin.top;
+            }
         }
     }
 }
@@ -2170,12 +2254,18 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
         //       previous two steps and zero.
         for line in flex_lines.iter_mut() {
             let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
+            // VIPER-PATCH(last-baseline): the last-baseline group is as high as its largest parts above and below
+            // the shared baseline (the step 1 above, for last baselines; CSS Box Alignment 3 §9.3).
+            let last_group =
+                last_baseline_group(line.items, constants, |child| child.hypothetical_outer_size.cross(constants.dir));
             line.cross_size = line
                 .items
                 .iter()
                 .map(|child| {
                     if child.participates_in_baseline_alignment(constants.dir) {
                         max_baseline - child.baseline + child.hypothetical_outer_size.cross(constants.dir)
+                    } else if child.participates_in_last_baseline_alignment(constants.dir) {
+                        last_group.sum()
                     } else {
                         child.hypothetical_outer_size.cross(constants.dir)
                     }
@@ -2403,6 +2493,9 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
             .filter(|child| child.participates_in_baseline_alignment(constants.dir))
             .map(|child| child.outer_target_size.cross(constants.dir) - child.baseline)
             .fold(0.0, |acc, x| acc.max(x));
+        // VIPER-PATCH(last-baseline): the line's last-baseline group.
+        let last_group =
+            last_baseline_group(line.items, constants, |child| child.outer_target_size.cross(constants.dir));
 
         for child in line.items.iter_mut() {
             let free_space = line_cross_size - child.outer_target_size.cross(constants.dir);
@@ -2434,6 +2527,7 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
                     free_space,
                     max_baseline,
                     max_baseline_to_bottom_distance,
+                    last_group,
                     constants,
                 );
             }
@@ -2453,6 +2547,8 @@ fn align_flex_items_along_cross_axis(
     free_space: f32,
     max_baseline: f32,
     max_baseline_to_bottom_distance: f32,
+    // VIPER-PATCH(last-baseline): the line's last-baseline group.
+    last_group: Line<f32>,
     constants: &AlgoConstants,
 ) -> f32 {
     let cross_axis_should_reverse = constants.is_column && matches!(constants.layout_direction, Direction::Rtl);
@@ -2482,8 +2578,7 @@ fn align_flex_items_along_cross_axis(
                 0.0
             }
         }
-        // VIPER-PATCH(last-baseline): until last-baseline groups are laid out, `last baseline` is `end`.
-        AlignItemsKeyword::End | AlignItemsKeyword::LastBaseline => {
+        AlignItemsKeyword::End => {
             if cross_axis_should_reverse {
                 0.0
             } else {
@@ -2517,6 +2612,17 @@ fn align_flex_items_along_cross_axis(
                 } else {
                     0.0
                 }
+            }
+        }
+        // VIPER-PATCH(last-baseline): the items' last baselines coincide, and the group takes its fallback alignment,
+        // `safe self-end`, resolved to a physical side (CSS Box Alignment 3 §9.3): the bottom of a row, `wrap-reverse`
+        // or not, and the right of a left-to-right column. A lone item is end-aligned.
+        AlignItemsKeyword::LastBaseline => {
+            let above = child.last_baseline_offset(constants);
+            if cross_axis_should_reverse {
+                last_group.start - above
+            } else {
+                free_space + child.outer_target_size.cross(constants.dir) - last_group.end - above
             }
         }
         AlignItemsKeyword::Stretch => {
@@ -2656,19 +2762,24 @@ fn calculate_flex_item(
         // Scroll containers' baselines are determined from their content as if scrolled to the initial
         // position, but are additionally clamped to their border box.
         // See https://github.com/w3c/csswg-drafts/issues/7660
-        let inner_baseline = {
-            let baseline = layout_output.baselines.first.unwrap_or(size.height);
+        // VIPER-PATCH(last-baseline): the item's last baseline too.
+        let inner_baseline = |baseline: Option<f32>| {
+            let baseline = baseline.unwrap_or(size.height);
             if item.overflow.y.is_scroll_container() {
                 baseline.min(size.height).max(0.0)
             } else {
                 baseline
             }
         };
-        item.baseline = baseline_offset_cross + inner_baseline;
+        item.baseline = baseline_offset_cross + inner_baseline(layout_output.baselines.first);
+        item.last_baseline = baseline_offset_cross + inner_baseline(layout_output.baselines.last);
+        item.has_last_baseline = layout_output.baselines.last.is_some();
     } else {
         let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
         let inner_baseline = layout_output.baselines.first.unwrap_or(size.height);
         item.baseline = baseline_offset_main + inner_baseline;
+        // VIPER-PATCH(last-baseline): the item's last baseline too.
+        item.last_baseline = baseline_offset_main + layout_output.baselines.last.unwrap_or(size.height);
     }
 
     let location = if direction.is_row() {

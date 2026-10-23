@@ -8,7 +8,8 @@ use crate::style::{
     AlignContent, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, CoreStyle, GridItemStyle, Overflow,
     Position,
 };
-use crate::tree::{Layout, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
+// VIPER-PATCH(last-baseline): `Baselines` for the item's baselines.
+use crate::tree::{Baselines, Layout, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
 use crate::util::sys::f32_max;
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 
@@ -93,13 +94,16 @@ pub(super) fn align_and_position_item(
     // have the container's content box as their containing block in the stacking axis.
     containing_block_size: Size<f32>,
     container_alignment_styles: InBothAbsAxis<AlignItems>,
-    baseline_shim: f32,
+    // VIPER-PATCH(last-baseline): the baseline shims of each axis: in the block axis the first-baseline shim at the top
+    // and the last-baseline shim at the bottom, in the inline axis the shim of a `justify-self: last baseline` group.
+    baseline_shims: Size<Line<f32>>,
     direction: Direction,
     container_border_box_width: f32,
     container_border: Rect<f32>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
     bubbled_candidates: &mut OofCandidates,
-) -> (Rect<f32>, f32, f32) {
+    // VIPER-PATCH(last-baseline): and the item's location, size and baselines.
+) -> (Rect<f32>, Point<f32>, Size<f32>, Baselines) {
     let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
 
     let style = tree.get_grid_child_style(node);
@@ -206,7 +210,9 @@ pub(super) fn align_and_position_item(
 
     let grid_area_minus_item_margins_size = Size {
         width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right).max(0.0),
-        height: (grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - baseline_shim).max(0.0),
+        // VIPER-PATCH(last-baseline): less both shims.
+        height: (grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - baseline_shims.height.sum())
+            .max(0.0),
     };
 
     // A size that is a sizing keyword (min-content, max-content, fit-content,
@@ -381,7 +387,8 @@ pub(super) fn align_and_position_item(
         position,
         inset_horizontal,
         margin.horizontal_components(),
-        0.0,
+        // VIPER-PATCH(last-baseline): the inline-axis shim.
+        baseline_shims.width,
         direction,
     );
     let (y, y_margin) = align_item_within_area(
@@ -391,7 +398,7 @@ pub(super) fn align_and_position_item(
         position,
         inset_vertical,
         margin.vertical_components(),
-        baseline_shim,
+        baseline_shims.height,
         Direction::Ltr,
     );
 
@@ -446,7 +453,19 @@ pub(super) fn align_and_position_item(
     #[cfg(not(feature = "content_size"))]
     let contribution = Rect::ZERO;
 
-    (contribution, y, height)
+    // VIPER-PATCH(last-baseline): the item's baselines from its border box's top edge, a scroll container's clamped
+    // to its border box as the flex and block algorithms clamp them.
+    let clamp = |baseline: Option<f32>| {
+        if overflow.y.is_scroll_container() {
+            baseline.map(|baseline| baseline.min(height).max(0.0))
+        } else {
+            baseline
+        }
+    };
+    let baselines =
+        Baselines { first: clamp(layout_output.baselines.first), last: clamp(layout_output.baselines.last) };
+
+    (contribution, Point { x, y }, Size { width, height }, baselines)
 }
 
 /// Align and size a grid item along a single axis
@@ -458,11 +477,15 @@ pub(super) fn align_item_within_area(
     position: Position,
     inset: Line<Option<f32>>,
     margin: Line<Option<f32>>,
-    baseline_shim: f32,
+    // VIPER-PATCH(last-baseline): a shim at each end.
+    baseline_shims: Line<f32>,
     direction: Direction,
 ) -> (f32, Line<f32>) {
     // Calculate grid area dimension in the axis
-    let non_auto_margin = Line { start: margin.start.unwrap_or(0.0) + baseline_shim, end: margin.end.unwrap_or(0.0) };
+    let non_auto_margin = Line {
+        start: margin.start.unwrap_or(0.0) + baseline_shims.start,
+        end: margin.end.unwrap_or(0.0) + baseline_shims.end,
+    };
     let grid_area_size = f32_max(grid_area.end - grid_area.start, 0.0);
     let free_space = f32_max(grid_area_size - resolved_size - non_auto_margin.sum(), 0.0);
 
@@ -475,7 +498,9 @@ pub(super) fn align_item_within_area(
     // its baseline offset and reports the item's own margin.
     let own_margin =
         Line { start: margin.start.unwrap_or(auto_margin_size), end: margin.end.unwrap_or(auto_margin_size) };
-    let resolved_margin = Line { start: own_margin.start + baseline_shim, end: own_margin.end };
+    // VIPER-PATCH(last-baseline): the last-baseline shim moves a last-baseline item up from the end of its area.
+    let resolved_margin =
+        Line { start: own_margin.start + baseline_shims.start, end: own_margin.end + baseline_shims.end };
 
     let overflows = resolved_size + non_auto_margin.sum() > grid_area_size;
     let alignment_keyword = resolve_self_alignment_safety(alignment_style, overflows);
@@ -493,7 +518,9 @@ pub(super) fn align_item_within_area(
                 resolved_margin.start
             }
         }
-        // VIPER-PATCH(last-baseline): until last-baseline groups are laid out, `last baseline` is `end`.
+        // VIPER-PATCH(last-baseline): a last-baseline item is end-aligned with its shim after it, which puts its last
+        // baseline at its group's shared distance from the end of its area: the group takes its fallback alignment,
+        // `safe self-end` (CSS Box Alignment 3 §9.3), and a lone item is end-aligned.
         AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd | AlignItemsKeyword::LastBaseline => {
             if direction.is_rtl() {
                 resolved_margin.start

@@ -413,7 +413,10 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &columns, &rows);
 
     // Determine if the grid has any baseline aligned items
-    let has_baseline_aligned_item = items.iter().any(|item| item.participates_in_baseline_alignment());
+    // VIPER-PATCH(last-baseline): or last-baseline aligned items.
+    let has_baseline_aligned_item = items
+        .iter()
+        .any(|item| item.participates_in_baseline_alignment() || item.participates_in_last_baseline_alignment());
 
     // Run track sizing algorithm for Inline axis
     track_sizing_algorithm(
@@ -704,7 +707,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let container_alignment_styles = InBothAbsAxis { horizontal: justify_items, vertical: align_items };
 
     // Position in-flow children (stored in items vector)
-    for (index, item) in items.iter_mut().enumerate() {
+    // VIPER-PATCH(last-baseline): through one function, which `justify-self: last baseline` groups call twice.
+    let position_item = |tree: &mut Tree, index: usize, item: &mut GridItem, inline_shims: Line<f32>| {
         // Tracks are stored in logical order. In RTL the physical offsets are assigned
         // right-to-left, so an item's physical left edge is derived from its logical end
         // line and its physical right edge from its logical start line.
@@ -722,24 +726,35 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 columns[item.column_indexes.end as usize].offset
             },
         };
-        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (overflow_contribution, y_position, height) = align_and_position_item(
+        align_and_position_item(
             tree,
             item.node,
             index as u32,
             grid_area,
             Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top },
             container_alignment_styles,
-            item.baseline_shim,
+            Size { width: inline_shims, height: Line { start: item.baseline_shim, end: item.last_baseline_shim } },
             direction,
             container_border_box.width,
             border,
             #[cfg(feature = "content_size")]
             is_scroll_container,
             &mut item.oof_candidates,
-        );
-        item.y_position = y_position;
-        item.height = height;
+        )
+    };
+    let inline_shims = justify_last_baseline_shims(&mut items, direction, |index, item| {
+        let (_, location, _, _) = position_item(tree, index, item, Line { start: 0.0, end: 0.0 });
+        item.oof_candidates = OofCandidates::new();
+        location.x
+    });
+    for (index, item) in items.iter_mut().enumerate() {
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
+        let (overflow_contribution, location, size, final_baselines) =
+            position_item(tree, index, item, inline_shims[index]);
+        item.y_position = location.y;
+        item.height = size.height;
+        // VIPER-PATCH(last-baseline): for the container's last baseline.
+        item.final_baselines = final_baselines;
 
         #[cfg(feature = "content_size")]
         {
@@ -915,8 +930,21 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             first_row_items.find(|item| item.participates_in_baseline_alignment()).unwrap_or(first_item)
         };
 
-        Some(item.y_position + item.baseline.unwrap_or(item.height))
+        // VIPER-PATCH(last-baseline): without a first-baseline group, the last-baseline group of items that end in
+        // the first row (CSS Grid 2 §11.6, step 2).
+        let ends_in_first_row = |item: &&GridItem| item.row_indexes.end == first_row + 2;
+        let last_group =
+            items.iter().filter(ends_in_first_row).find(|item| item.participates_in_last_baseline_alignment());
+        match last_group {
+            Some(group_item) if !item.participates_in_baseline_alignment() => {
+                Some(group_item.y_position + group_item.final_baselines.last.unwrap_or(group_item.height))
+            }
+            _ => Some(item.y_position + item.baseline.unwrap_or(item.height)),
+        }
     };
+
+    // VIPER-PATCH(last-baseline): the container's last baseline (CSS Grid 2 §11.6, "first" and "last" inverted).
+    let grid_container_last_baseline = if contain.suppresses_baseline() { None } else { grid_last_baseline(&items) };
 
     // A scroll container's own padding at the end of the content is part of its scrollable
     // overflow region, so it is included in the in-flow overflow rect. Boxes that are not
@@ -936,7 +964,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let mut output = LayoutOutput::from_sizes_and_baselines(
         container_border_box,
         scrollable_overflow_rect,
-        Baselines::from_first(grid_container_baseline),
+        // VIPER-PATCH(last-baseline): and the last baseline.
+        Baselines { first: grid_container_baseline, last: grid_container_last_baseline },
     );
     output.oof_candidates = oof_candidates;
     output.oof_positioning_area = oof_positioning_area;
@@ -1413,4 +1442,62 @@ impl DetailedGridItemsInfo {
             column_end: to_one_indexed_grid_line(grid_item.column_indexes.end),
         }
     }
+}
+
+// VIPER-PATCH(last-baseline): the grid container's last baseline (CSS Grid 2 §11.6, "first" and "last" inverted).
+/// The last baseline of a grid container whose in-flow `items` are laid out, from its border box's top edge, taken
+/// from its last row holding an item: the shared baseline of the row's last-baseline group (items whose areas end in
+/// it), else of its first-baseline group (items whose areas start in it), else the last baseline of the last item in
+/// grid order that has one, else one synthesized from the bottom edge of the last item's border box. Grid order is
+/// traversed from the end: the largest row end, then column end, then the later item. Row indexes are into the
+/// track vector, where lines and tracks alternate, so an area starts in the last row when its start line is two
+/// before that row's end line.
+fn grid_last_baseline(items: &[GridItem]) -> Option<f32> {
+    let last_row_end = items.iter().map(|item| item.row_indexes.end).max()?;
+    let starts_in_last_row = |item: &&GridItem| item.row_indexes.start + 2 == last_row_end;
+    let ends_in_last_row = |item: &&GridItem| item.row_indexes.end == last_row_end;
+    let position = |item: &GridItem, baseline: Option<f32>| item.y_position + baseline.unwrap_or(item.height);
+    let last_group = items.iter().filter(ends_in_last_row).find(|item| item.participates_in_last_baseline_alignment());
+    let first_group = || items.iter().filter(starts_in_last_row).find(|item| item.participates_in_baseline_alignment());
+    let grid_order = |item: &&GridItem| (item.row_indexes.end, item.column_indexes.end);
+    let in_last_row = || items.iter().filter(ends_in_last_row);
+    let with_baseline = || in_last_row().filter(|item| item.final_baselines.last.is_some()).max_by_key(grid_order);
+    if let Some(item) = last_group {
+        Some(position(item, item.final_baselines.last))
+    } else if let Some(item) = first_group() {
+        Some(position(item, item.final_baselines.first))
+    } else {
+        let item = with_baseline().or_else(|| items.iter().max_by_key(grid_order))?;
+        Some(position(item, item.final_baselines.last))
+    }
+}
+
+// VIPER-PATCH(last-baseline): `justify-self: last baseline` groups (CSS Box Alignment 3 §6.4, §9.1 to §9.3).
+/// The inline-axis shims of the items. Items with `justify-self: last baseline` whose areas end in one column share
+/// a group; their baselines across the column are synthesized at their border boxes' left edges (the line-under
+/// edge of the axis-compatible writing mode), so the group lines those edges up and takes its fallback alignment,
+/// `safe self-end`. `end_aligned_x` lays an item out end-aligned and returns its border box's left edge: the group's
+/// edge is the leftmost (the rightmost in right-to-left grids), and each item's shim is its distance from there.
+fn justify_last_baseline_shims(
+    items: &mut [GridItem],
+    direction: Direction,
+    mut end_aligned_x: impl FnMut(usize, &mut GridItem) -> f32,
+) -> Vec<Line<f32>> {
+    let mut shims = Vec::new();
+    shims.resize(items.len(), Line { start: 0.0, end: 0.0 });
+    let participants: Vec<(usize, u16, f32)> = items
+        .iter_mut()
+        .enumerate()
+        .filter(|(_, item)| item.participates_in_inline_last_baseline_alignment())
+        .map(|(index, item)| (index, item.column_indexes.end, end_aligned_x(index, item)))
+        .collect();
+    for &(index, column_end, x) in &participants {
+        let group = participants.iter().filter(|other| other.1 == column_end).map(|other| other.2);
+        shims[index] = if direction.is_rtl() {
+            Line { start: group.fold(x, f32_max) - x, end: 0.0 }
+        } else {
+            Line { start: 0.0, end: x - group.fold(x, f32_min) }
+        };
+    }
+    shims
 }

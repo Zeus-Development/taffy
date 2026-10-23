@@ -637,7 +637,7 @@ fn compute_inner(
         mut intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        mut first_baseline,
+        mut baselines,
     ) = perform_final_layout_on_in_flow_children(
         tree,
         run_mode,
@@ -691,7 +691,9 @@ fn compute_inner(
         let inflow_content_height = intrinsic_outer_height - resolved_content_box_inset.vertical_axis_sum();
         let free_space = container_inner_height - inflow_content_height;
         let group_offset = compute_block_align_content_offset(align_content, free_space);
-        first_baseline = first_baseline.map(|baseline| baseline + group_offset);
+        // VIPER-PATCH(last-baseline): the content's last baseline moves with it.
+        baselines.first = baselines.first.map(|baseline| baseline + group_offset);
+        baselines.last = baselines.last.map(|baseline| baseline + group_offset);
         for item in items.iter_mut() {
             if let Some(layout) = item.final_layout.as_mut() {
                 layout.location.y += group_offset;
@@ -755,7 +757,8 @@ fn compute_inner(
         size: final_outer_size,
         #[cfg(feature = "content_size")]
         scrollable_overflow_rect: Rect::ZERO,
-        baselines: Baselines::from_first(first_baseline),
+        // VIPER-PATCH(last-baseline): a block container reports its last baseline too.
+        baselines,
         top_margin: if own_margins_collapse_with_children.start {
             first_child_top_margin_set
         } else {
@@ -1074,7 +1077,8 @@ fn perform_final_layout_on_in_flow_children(
     children_margins_adjoin_own_edges: Line<bool>,
     #[cfg(feature = "content_size")] is_scroll_container: bool,
     block_ctx: &mut BlockContext<'_>,
-) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
+    // VIPER-PATCH(last-baseline): the content's first and last baselines.
+) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Baselines) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = (container_outer_width - resolved_content_box_inset.horizontal_axis_sum()).max(0.0);
     let container_percentage_resolution_height =
@@ -1112,7 +1116,8 @@ fn perform_final_layout_on_in_flow_children(
     let mut first_child_top_margin_set = CollapsibleMarginSet::ZERO;
     let mut active_collapsible_margin_set = CollapsibleMarginSet::ZERO;
     let mut is_collapsing_with_first_margin_set = true;
-    let mut first_baseline: Option<f32> = None;
+    // VIPER-PATCH(last-baseline): the content's first and last baselines.
+    let mut baselines = Baselines::NONE;
     // Whether the active margin set contains the margins of a self-collapsing element with
     // clearance. Such margins collapse with the margins of following siblings but the resulting
     // margin does not collapse with the bottom margin of the parent block.
@@ -1689,21 +1694,22 @@ fn perform_final_layout_on_in_flow_children(
             // initial position, but are additionally clamped to their border box. A scroll container
             // with no baseline synthesizes one from its border-box bottom edge.
             // See https://github.com/w3c/csswg-drafts/issues/7660
-            if first_baseline.is_none() {
-                let child_baseline = if item.overflow.y.is_scroll_container() {
-                    Some(
-                        item_layout
-                            .baselines
-                            .first
-                            .unwrap_or(item_layout.size.height)
-                            .min(item_layout.size.height)
-                            .max(0.0),
-                    )
+            //
+            // VIPER-PATCH(last-baseline): and its last baseline is the last baseline of its last in-flow
+            // child that has one (CSS 2.1 §10.8.1, CSS Box Alignment 3 §9.1).
+            let child_baseline = |baseline: Option<f32>| {
+                let size = item_layout.size.height;
+                let baseline = if item.overflow.y.is_scroll_container() {
+                    Some(baseline.unwrap_or(size).min(size).max(0.0))
                 } else {
-                    item_layout.baselines.first
+                    baseline
                 };
-                first_baseline = child_baseline.map(|baseline| location.y + baseline);
+                baseline.map(|baseline| location.y + baseline)
+            };
+            if baselines.first.is_none() {
+                baselines.first = child_baseline(item_layout.baselines.first);
             }
+            baselines.last = child_baseline(item_layout.baselines.last).or(baselines.last);
 
             // Used auto margins include float-avoidance offsets, unlike the alignment margins above.
             #[cfg(feature = "float_layout")]
@@ -1825,5 +1831,5 @@ fn perform_final_layout_on_in_flow_children(
 
     committed_y_offset += resolved_content_box_inset.bottom + bottom_y_margin_offset;
     let content_height = f32_max(0.0, committed_y_offset);
-    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
+    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, baselines)
 }
