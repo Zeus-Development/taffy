@@ -60,6 +60,8 @@ Branch: viper/taffy-0.15.0
 | `grid-baseline-margin` | a baseline-aligned grid item's used margin is its own, without the baseline shim | `adr:layout-grid-baseline-margin` | fork: `a_baseline_aligned_grid_item_keeps_its_own_margin`; Viper: `viper-layout::alignment a_baseline_aligned_grid_items_margin_is_its_own` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `flex-aspect-ratio` | a flex item's automatic sizes follow its aspect ratio from its used main size and from a definite cross size, in the `box-sizing` box | `adr:layout-flex-aspect-ratio` | fork: `a_flexed_items_cross_size_follows_its_ratio`, `a_stretched_cross_size_goes_through_the_ratio_in_the_content_box`, `a_columns_stretched_width_goes_through_the_ratio_in_the_content_box`, `an_aspect_ratio_item_grows_to_its_content_unless_its_minimum_is_set`; Viper: `viper-layout::flex_grid flex_items_size_through_their_aspect_ratio_in_their_box_sizing_box` | MIT; its first commit is the `src/compute/flexbox.rs` change of upstream commit `eb2c9e1a69e9bf79870758535c2920ccbcee4961` by Nico Burns, taken unchanged apart from the markers; its second is Viper's | candidate; never offered without the owner (the upstream part is upstream's own work in progress) |
 | `last-baseline` | `last baseline` in `align-items`, `align-self`, `justify-items` and `justify-self` of flex and grid items; block, flex and grid containers report their last baselines | `adr:layout-last-baseline` | fork: `flex_items_align_on_their_last_baselines`, `grid_items_align_on_their_last_baselines`, `a_flex_container_reports_its_last_lines_baseline`, `a_grid_container_reports_its_last_rows_baseline`, `an_item_without_a_baseline_synthesizes_its_last_baseline`, `first_and_last_baseline_items_form_separate_groups`, `a_containers_last_baseline_comes_from_its_last_item_that_has_one`, `grid_items_justify_on_their_last_baselines_by_column`, `flex_column_items_align_on_synthesized_last_baselines`, and the parser tests in `src/style/alignment.rs`; Viper: `viper-layout::alignment flex_and_grid_items_align_on_their_last_baselines` | MIT; adapted from upstream work in progress by Nico Burns (Taffy's maintainer), commits `2d469f25069288b023717e112dc7f4423bf6d0ad` ("Output last baselines from all built-in layout algorithms") and `bbea180faea4baa11d66b64e6fbd1b837d619829` to `7846613e2c27538ff5b586dafc0e5673d0986c85` (last-baseline alignment), attribution kept; re-applied on 0.15.0 with Viper's changes | candidate; never offered without the owner |
+| `size-containment` | size and inline-size containment: `Contain::SIZE`, `Contain::INLINE_SIZE` and `contain: strict`; a box sized as if it had no content in its contained axes, then its content laid out in that size, in the block, flexbox, grid and leaf algorithms (CSS Containment 2 §3.1, §3.2) | none (no register entry existed) | fork: `a_size_contained_block_is_as_high_as_if_it_were_empty`, `a_size_contained_flex_item_has_no_content_size`, `an_inline_size_contained_box_lays_its_content_out_in_its_empty_width`, `a_size_contained_grid_keeps_its_explicit_tracks`, `a_size_contained_leaf_is_measured_only_in_its_contained_size`, and `parse_contain` in `src/style/mod.rs`; Viper: `viper-layout::containment size_and_inline_size_containment_size_boxes_as_if_empty` | MIT (Viper's own change) | candidate; never offered without the owner |
+| `scroll-last-baseline` | `CoreStyle::baseline_source` and `CoreStyle::is_block_container`; a block container that is a block-axis scroll container with `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1) | `adr:layout-scroll-last-baseline` | fork: `a_clipping_blocks_last_baseline_is_its_bottom_margin_edge`, `a_containers_last_baseline_can_be_its_clipping_childs_margin_edge`; Viper: `viper-layout::containment a_scroll_containers_last_baseline_is_its_bottom_margin_edge` | MIT (Viper's own change) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -178,6 +180,55 @@ fail there. The second lays it out:
   block-level `justify-self` belong to no shared alignment context and take
   the fallback alignment, `safe self-end` (§4.2); a lone item is end-aligned.
 
+### `size-containment`
+
+Two commits, shared with `scroll-last-baseline`: the first adds the flags,
+the keywords and the fork tests, which fail there; the second lays them out.
+
+- **The flags.** `Contain::INLINE_SIZE`, and `Contain::SIZE`, which includes
+  it; `contain: strict` is `size layout paint`; `size` and `inline-size`
+  exclude each other when parsing (CSS Containment 2 §2).
+  `Contain::size_contained_axes` gives the contained axes: both under size
+  containment, the inline axis under inline-size containment, which is the
+  width in Taffy's horizontal axes.
+- **Two phases** (§3.1, "sizing as if empty" and "laying out in-place";
+  `src/compute/common/containment.rs`). `compute_block_layout`,
+  `compute_flexbox_layout`, `compute_grid_layout` and `compute_leaf_layout`
+  first run their own algorithm as a size computation without the box's
+  children (a leaf without calling its measure function), in a formatting
+  context of the box's own, when a contained axis has no known size. Each
+  such axis then takes that size as a known, definite dimension, and the
+  algorithm runs again with the children, so they are laid out in the fixed
+  size and may overflow it. The box's own properties keep their effect (its
+  sizes, minimums, padding, border, aspect ratio and a grid's explicit
+  tracks), and so does stretching, which does not depend on content. In
+  every intrinsic size the box contributes only that size, so a contained
+  item adds nothing of its content to a flex base size, an automatic
+  minimum size or a grid track's size (the note of §3.1). A box contained in
+  the inline axis only is laid out in its empty width, and its height comes
+  from its content as usual (§3.2).
+- **Not in the fork:** which boxes containment applies to (§3.1's list:
+  boxes without a principal box, tables, internal table and ruby boxes,
+  non-atomic inline boxes) is the caller's style; replaced elements' natural
+  sizes are the caller's measure function's; `contain-intrinsic-size` is not
+  read.
+
+### `scroll-last-baseline`
+
+`CoreStyle::baseline_source` (the CSS `baseline-source` property, a
+`Style` field, `auto` by default) and `CoreStyle::is_block_container`
+(`Style`: `display: block` or `flow-root`, not a replaced element). CSS Box
+Alignment 3 §9.1 gives a block container that is a block-axis scroll
+container and whose `baseline-source` is `auto` a last baseline set at its
+block-end margin edge, "for legacy reasons". The parent algorithms, which
+already clamp a scroll container's baselines to its border box, use that
+edge for its last baseline instead (`last_baseline_at_margin_edge`, read
+once per item): a block container's last baseline from its last in-flow
+child, flex and grid last-baseline sharing groups (the item's last baseline has no
+descent below it), and flex and grid containers' last baselines
+from their items. First baselines and other boxes are unchanged.
+`tests/xml.rs` reads the new field from a `baseline-source` attribute.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -240,4 +291,5 @@ Each Viper revision that moves its pin to this branch.
 | --- | --- | --- |
 | V13b-2c1 | `3a41d2dc0942002d7f3ff3c876a0269cd4b885e8` | this ledger only |
 | V13b-2c2 | `4241e09fc1543e4aecefb15a8038d56b7625ba77` | `grid-fr-carry`, `grid-baseline-margin`, `flex-aspect-ratio` |
-| V13c-1-c3b | the last commit of the range that adds this row | `last-baseline` |
+| V13c-1-c3b | `66999e06cb9d957facb28782db6ea1e5977a4a62` | `last-baseline` |
+| V10b-10s | the last commit of the range that adds this row | `size-containment`, `scroll-last-baseline` |
