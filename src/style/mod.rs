@@ -204,6 +204,21 @@ pub trait CoreStyle {
     fn contain(&self) -> Contain {
         Contain::NONE
     }
+
+    /// The CSS `baseline-source` property of this node
+    // VIPER-PATCH(scroll-last-baseline): the accessor.
+    #[inline(always)]
+    fn baseline_source(&self) -> BaselineSource {
+        BaselineSource::Auto
+    }
+
+    /// Whether this node is a block container (a box laid out by the block layout algorithm,
+    /// not a replaced element)
+    // VIPER-PATCH(scroll-last-baseline): the accessor.
+    #[inline(always)]
+    fn is_block_container(&self) -> bool {
+        false
+    }
 }
 
 /// The styles of an out-of-flow (`position: absolute` / `position: fixed`) box that are read by
@@ -530,9 +545,15 @@ crate::util::parse::impl_parse_for_keyword_enum!(Overflow,
 ///     containment's other effects (clipping, containing absolutely-positioned descendants,
 ///     stacking context) are outside of Taffy's scope.
 ///
+///   - [`Contain::SIZE`] and [`Contain::INLINE_SIZE`]: the box is sized as if it had no content in
+///     both axes, or in its inline axis (horizontal in Taffy's axes), and its content is then laid
+///     out in that size (size and inline-size containment).
+// VIPER-PATCH(size-containment): the flags' documentation.
+///
 /// The `style` containment type has no effect on layout and is therefore not represented
-/// (it is accepted and ignored when parsing). Size and inline-size containment are not
-/// currently implemented.
+/// (it is accepted and ignored when parsing).
+//
+// VIPER-PATCH(size-containment): size and inline-size containment (CSS Containment 2 §3.1, §3.2).
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/CSS/contain>
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
@@ -552,6 +573,18 @@ impl Contain {
     pub const PAINT: Contain = Contain(1 << 1);
     /// The containment implied by `contain: content` (`layout paint`, ignoring style containment)
     pub const CONTENT: Contain = Contain(Contain::LAYOUT.0 | Contain::PAINT.0);
+    /// Inline-size containment: the box's inline-axis intrinsic sizes are determined as if it had
+    /// no content. <https://drafts.csswg.org/css-contain-2/#containment-inline-size>
+    // VIPER-PATCH(size-containment): the flag.
+    pub const INLINE_SIZE: Contain = Contain(1 << 2);
+    /// Size containment: the box is sized as if it had no content in both axes, then its content is
+    /// laid out in that size. It includes [`Contain::INLINE_SIZE`].
+    /// <https://drafts.csswg.org/css-contain-2/#containment-size>
+    // VIPER-PATCH(size-containment): the flag.
+    pub const SIZE: Contain = Contain(1 << 3 | Contain::INLINE_SIZE.0);
+    /// The containment implied by `contain: strict` (`size layout paint`, ignoring style containment)
+    // VIPER-PATCH(size-containment): the keyword.
+    pub const STRICT: Contain = Contain(Contain::SIZE.0 | Contain::CONTENT.0);
 
     /// The default containment (no containment)
     pub const DEFAULT: Contain = Contain::NONE;
@@ -595,7 +628,41 @@ impl Contain {
     pub const fn contains_scrollable_overflow(self) -> bool {
         self.intersects(Contain::LAYOUT.union(Contain::PAINT))
     }
+
+    /// The axes in which the box is sized as if it had no content: both under size containment,
+    /// the inline axis (the width in Taffy's horizontal axes) under inline-size containment
+    // VIPER-PATCH(size-containment): the contained axes.
+    #[inline(always)]
+    pub const fn size_contained_axes(self) -> Size<bool> {
+        Size { width: self.intersects(Contain::INLINE_SIZE), height: self.contains(Contain::SIZE) }
+    }
 }
+
+/// The CSS `baseline-source` property: which baseline set an inline-level box aligns by.
+///
+/// Taffy reads it for CSS Box Alignment 3 §9.1's legacy rule: a block container that is a
+/// block-axis scroll container and whose `baseline-source` is `auto` has a last baseline set at
+/// its block-end margin edge. <https://drafts.csswg.org/css-inline-3/#baseline-source>
+// VIPER-PATCH(scroll-last-baseline): the property.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum BaselineSource {
+    /// The initial value: the last baseline set for an inline-block, the first otherwise.
+    #[default]
+    Auto,
+    /// The first baseline set.
+    First,
+    /// The last baseline set.
+    Last,
+}
+
+// VIPER-PATCH(scroll-last-baseline): the keywords.
+#[cfg(feature = "parse")]
+crate::util::parse::impl_parse_for_keyword_enum!(BaselineSource,
+    "auto" => Auto,
+    "first" => First,
+    "last" => Last,
+);
 
 impl core::ops::BitOr for Contain {
     type Output = Contain;
@@ -618,6 +685,8 @@ impl crate::util::parse::FromCss for Contain {
         /// Duplicate-detection bit for the ignored `style` keyword, which does not map to a
         /// `Contain` flag
         const STYLE_BIT: u8 = 1 << 6;
+        // VIPER-PATCH(size-containment): `size` and `inline-size` exclude each other.
+        const SIZE_BIT: u8 = 1 << 2;
 
         let mut flags = Contain::NONE;
         let mut seen: u8 = 0;
@@ -628,17 +697,23 @@ impl crate::util::parse::FromCss for Contain {
                 // Single-keyword values (only valid on their own; `parse_entirely` in the
                 // `FromStr` impl rejects trailing keywords, and a leading keyword before them
                 // is rejected by the `seen != 0` check below)
-                "none" | "content" => {
+                // VIPER-PATCH(size-containment): and `strict`.
+                "none" | "content" | "strict" => {
                     if seen != 0 || !input.is_exhausted() {
                         return Err(input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident)));
                     }
                     return Ok(cssparser::match_ignore_ascii_case! { &*ident,
                         "content" => Contain::CONTENT,
+                        // VIPER-PATCH(size-containment): `strict`.
+                        "strict" => Contain::STRICT,
                         _ => Contain::NONE,
                     });
                 },
                 "layout" => (Contain::LAYOUT, Contain::LAYOUT.0),
                 "paint" => (Contain::PAINT, Contain::PAINT.0),
+                // VIPER-PATCH(size-containment): the size keywords.
+                "size" => (Contain::SIZE, SIZE_BIT),
+                "inline-size" => (Contain::INLINE_SIZE, SIZE_BIT),
                 // `style` containment has no layout effect: accept and ignore it so that real
                 // CSS values round-trip
                 "style" => (Contain::NONE, STYLE_BIT),
@@ -733,6 +808,9 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     pub scrollbar_width: f32,
     /// The layout-affecting parts of the CSS `contain` property
     pub contain: Contain,
+    /// The CSS `baseline-source` property
+    // VIPER-PATCH(scroll-last-baseline): the field.
+    pub baseline_source: BaselineSource,
 
     #[cfg(feature = "float_layout")]
     /// Should the box be floated
@@ -884,6 +962,8 @@ impl<S: CheapCloneStr> Style<S> {
         overflow: Point { x: Overflow::Visible, y: Overflow::Visible },
         scrollbar_width: 0.0,
         contain: Contain::NONE,
+        // VIPER-PATCH(scroll-last-baseline): the field.
+        baseline_source: BaselineSource::Auto,
         #[cfg(feature = "float_layout")]
         float: Float::None,
         #[cfg(feature = "float_layout")]
@@ -1035,6 +1115,16 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn contain(&self) -> Contain {
         self.contain
     }
+    // VIPER-PATCH(scroll-last-baseline): the accessors.
+    #[inline(always)]
+    fn baseline_source(&self) -> BaselineSource {
+        self.baseline_source
+    }
+    #[inline(always)]
+    #[cfg(feature = "block_layout")]
+    fn is_block_container(&self) -> bool {
+        matches!(self.display, Display::Block | Display::FlowRoot) && !self.item_is_replaced
+    }
 }
 
 impl<S: CheapCloneStr> OofItemStyle for Style<S> {
@@ -1142,6 +1232,15 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn contain(&self) -> Contain {
         (*self).contain()
+    }
+    // VIPER-PATCH(scroll-last-baseline): the accessors.
+    #[inline(always)]
+    fn baseline_source(&self) -> BaselineSource {
+        (*self).baseline_source()
+    }
+    #[inline(always)]
+    fn is_block_container(&self) -> bool {
+        (*self).is_block_container()
     }
 }
 
@@ -1647,6 +1746,8 @@ mod tests {
             overflow: Default::default(),
             scrollbar_width: 0.0,
             contain: Default::default(),
+            // VIPER-PATCH(scroll-last-baseline): the field.
+            baseline_source: Default::default(),
             position: Default::default(),
             #[cfg(feature = "flexbox")]
             flex_direction: Default::default(),
@@ -1734,6 +1835,16 @@ mod tests {
         assert!("layout none".parse::<Contain>().is_err());
         assert!("content layout".parse::<Contain>().is_err());
         assert!("layout content".parse::<Contain>().is_err());
+
+        // VIPER-PATCH(size-containment): the size keywords.
+        assert_eq!(parse("size"), Contain::SIZE);
+        assert_eq!(parse("inline-size layout"), Contain::INLINE_SIZE | Contain::LAYOUT);
+        assert_eq!(parse("strict"), Contain::SIZE | Contain::LAYOUT | Contain::PAINT);
+        assert!("size inline-size".parse::<Contain>().is_err());
+        assert!("strict size".parse::<Contain>().is_err());
+        assert_eq!(Contain::SIZE.size_contained_axes(), Size { width: true, height: true });
+        assert_eq!(Contain::INLINE_SIZE.size_contained_axes(), Size { width: true, height: false });
+        assert_eq!(Contain::CONTENT.size_contained_axes(), Size { width: false, height: false });
     }
 
     // NOTE: Please feel free the update the sizes in this test as required. This test is here to prevent unintentional size changes

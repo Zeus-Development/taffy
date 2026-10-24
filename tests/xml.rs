@@ -374,6 +374,8 @@ fn build_style<S: CheapCloneStr>(xnode: roxmltree::Node) -> taffy::Style<S> {
         },
         scrollbar_width: parse_or_default(xnode.attribute("scrollbar-width")),
         contain: parse_or_default(xnode.attribute("contain")),
+        // VIPER-PATCH(scroll-last-baseline): the field.
+        baseline_source: parse_or_default(xnode.attribute("baseline-source")),
         float: parse_or_default(xnode.attribute("float")),
         clear: parse_or_default(xnode.attribute("clear")),
         position: parse_or_default(xnode.attribute("position")),
