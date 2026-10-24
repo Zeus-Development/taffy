@@ -62,6 +62,7 @@ Branch: viper/taffy-0.15.0
 | `last-baseline` | `last baseline` in `align-items`, `align-self`, `justify-items` and `justify-self` of flex and grid items; block, flex and grid containers report their last baselines | `adr:layout-last-baseline` | fork: `flex_items_align_on_their_last_baselines`, `grid_items_align_on_their_last_baselines`, `a_flex_container_reports_its_last_lines_baseline`, `a_grid_container_reports_its_last_rows_baseline`, `an_item_without_a_baseline_synthesizes_its_last_baseline`, `first_and_last_baseline_items_form_separate_groups`, `a_containers_last_baseline_comes_from_its_last_item_that_has_one`, `grid_items_justify_on_their_last_baselines_by_column`, `flex_column_items_align_on_synthesized_last_baselines`, and the parser tests in `src/style/alignment.rs`; Viper: `viper-layout::alignment flex_and_grid_items_align_on_their_last_baselines` | MIT; adapted from upstream work in progress by Nico Burns (Taffy's maintainer), commits `2d469f25069288b023717e112dc7f4423bf6d0ad` ("Output last baselines from all built-in layout algorithms") and `bbea180faea4baa11d66b64e6fbd1b837d619829` to `7846613e2c27538ff5b586dafc0e5673d0986c85` (last-baseline alignment), attribution kept; re-applied on 0.15.0 with Viper's changes | candidate; never offered without the owner |
 | `size-containment` | size and inline-size containment: `Contain::SIZE`, `Contain::INLINE_SIZE` and `contain: strict`; a box sized as if it had no content in its contained axes, then its content laid out in that size, in the block, flexbox, grid and leaf algorithms (CSS Containment 2 §3.1, §3.2) | none (no register entry existed) | fork: `a_size_contained_block_is_as_high_as_if_it_were_empty`, `a_size_contained_flex_item_has_no_content_size`, `an_inline_size_contained_box_lays_its_content_out_in_its_empty_width`, `a_size_contained_grid_keeps_its_explicit_tracks`, `a_size_contained_leaf_is_measured_only_in_its_contained_size`, `a_size_contained_boxs_fixed_height_is_a_percentage_basis`, and `parse_contain` in `src/style/mod.rs`; Viper: `viper-layout::containment size_and_inline_size_containment_size_boxes_as_if_empty` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `scroll-last-baseline` | `CoreStyle::baseline_source` and `CoreStyle::is_block_container`; a block container that is a block-axis scroll container with `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1) | `adr:layout-scroll-last-baseline` | fork: `a_clipping_blocks_last_baseline_is_its_bottom_margin_edge`, `a_containers_last_baseline_can_be_its_clipping_childs_margin_edge`; Viper: `viper-layout::containment a_scroll_containers_last_baseline_is_its_bottom_margin_edge` | MIT (Viper's own change) | candidate; never offered without the owner |
+| `layout-float-alias` | every layout number (computed sizes, positions, offsets, baselines, the available space, known and intrinsic sizes, track sizes and offsets, float segments, scrollable overflow, cache entries) has the type of one alias, `LayoutFloat = f32`, exported at the crate root and in the prelude; style values stay `f32`. Mechanical; behaviour-free; prepares `layout-f64` | `adr:layout-length-cap` (prepares it; later tasks close it) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_still_f32_sums`, and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -229,6 +230,32 @@ descent below it), and flex and grid containers' last baselines
 from their items. First baselines and other boxes are unchanged.
 `tests/xml.rs` reads the new field from a `baseline-source` attribute.
 
+### `layout-float-alias`
+
+`pub type LayoutFloat = f32;` in `src/lib.rs`, also in the prelude. Every
+`f32` that carries a computed layout number has that type instead: the
+`Size`, `Point`, `Rect` and `Line` values of layout inputs, outputs and
+results (`Layout`, `LayoutInput`, `LayoutOutput`), `AvailableSpace::Definite`,
+known dimensions, intrinsic and content sizes, baselines, track sizes and
+offsets, float segments, scrollable overflow, the cache's entries, the
+`MaybeMath` and `MaybeResolve` helpers over layout numbers, the context and
+results of resolving a length against a basis (`resolve_to_option`,
+`resolve_calc_value`), and the `no_std` helpers in `src/util/sys.rs`.
+
+Style values stay `f32`: `CompactLength`'s stored value, the constructors of
+`Dimension`, `LengthPercentage`, `LengthPercentageAuto` and the track sizing
+functions, `style_helpers`, flex grow and shrink factors and their sums, fr
+factors, aspect ratios and `scrollbar_width`. Comments, the bit packing of
+the cache keys and the unit tests inside `src/` are unchanged.
+
+The change is mechanical and changes no value: the alias is `f32`. The
+whole fork suite passes unchanged, and so do Viper's suites with the new
+pin. It is far above the 100-line target of the rules above (about 660
+changed lines, each with a marker on its hunk), because it is one type
+substitution across the layout code; it makes the later change of the
+alias's type one line plus the conversions where style values meet layout
+numbers. It is applied with Taffy's own formatting (`cargo fmt`).
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -292,4 +319,5 @@ Each Viper revision that moves its pin to this branch.
 | V13b-2c1 | `3a41d2dc0942002d7f3ff3c876a0269cd4b885e8` | this ledger only |
 | V13b-2c2 | `4241e09fc1543e4aecefb15a8038d56b7625ba77` | `grid-fr-carry`, `grid-baseline-margin`, `flex-aspect-ratio` |
 | V13c-1-c3b | `66999e06cb9d957facb28782db6ea1e5977a4a62` | `last-baseline` |
-| V10b-10s | the last commit of the range that adds this row | `size-containment`, `scroll-last-baseline` |
+| V10b-10s | `ec90f57687866cc4e54054147d7629f29a941bdc` | `size-containment`, `scroll-last-baseline` |
+| V13b-2i1a | the last commit of the range that adds this row | `layout-float-alias` |
