@@ -213,7 +213,7 @@ pub trait CoreStyle {
     }
 
     /// Whether this node is a block container (a box laid out by the block layout algorithm,
-    /// not a replaced element)
+    /// not a replaced element or a table)
     // VIPER-PATCH(scroll-last-baseline): the accessor.
     #[inline(always)]
     fn is_block_container(&self) -> bool {
@@ -1123,7 +1123,9 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     #[inline(always)]
     #[cfg(feature = "block_layout")]
     fn is_block_container(&self) -> bool {
-        matches!(self.display, Display::Block | Display::FlowRoot) && !self.item_is_replaced
+        // VIPER-PATCH(scroll-last-baseline): a table is no block container (its last baseline set is its last
+        // row's, CSS Box Alignment 3 §9.1).
+        matches!(self.display, Display::Block | Display::FlowRoot) && !self.item_is_replaced && !self.item_is_table
     }
 }
 

@@ -549,6 +549,30 @@ fn an_inline_size_contained_box_lays_its_content_out_in_its_empty_width() {
     assert_eq!(sizes(&mut taffy, root, &[boxed, lines]), [(10.0, 50.0), (0.0, 40.0)]);
 }
 
+/// The size fixed by sizing as if empty is definite: content is laid out "into the now fixed-size containment box"
+/// (§3.1). In a 300px-wide block, a `contain: size` block with `min-height: 40px` is 40px high, and its child's
+/// `height: 50%` resolves against that, 20px, though the child holds a 30px block, which an indefinite height would
+/// leave it at.
+#[test]
+fn a_size_contained_boxs_fixed_height_is_a_percentage_basis() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    let content = block(&mut taffy, 10.0, 30.0);
+    let half =
+        Style { display: Display::Block, size: Size { width: auto(), height: percent(0.5) }, ..Default::default() };
+    let child = taffy.new_with_children(half, &[content]).unwrap();
+    let style = Style {
+        display: Display::Block,
+        contain: Contain::SIZE,
+        min_size: Size { width: auto(), height: length(40.0) },
+        ..Default::default()
+    };
+    let boxed = taffy.new_with_children(style, &[child]).unwrap();
+    let width =
+        Style { display: Display::Block, size: Size { width: length(300.0), height: auto() }, ..Default::default() };
+    let root = taffy.new_with_children(width, &[boxed]).unwrap();
+    assert_eq!(sizes(&mut taffy, root, &[boxed, child]), [(300.0, 40.0), (300.0, 20.0)]);
+}
+
 /// A grid with `contain: size` is sized as if it had no items, and an empty grid still has its explicit tracks: one
 /// 100px column and an `auto` row, which is 0px without items. So the grid is 110 × 10, where its 200 × 50 item
 /// would make it 110 × 60. In an `auto` column of an outer grid the same contained grid makes the column 110px.
@@ -608,12 +632,13 @@ fn a_size_contained_leaf_is_measured_only_in_its_contained_size() {
 // `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1).
 
 /// A 40px-high block container that clips (`overflow: hidden`, a scroll container) with a 5px bottom margin, holding
-/// one line of text, and `baseline_source`.
-fn clipping(taffy: &mut TaffyTree<()>, display: Display, baseline_source: BaselineSource) -> NodeId {
+/// one line of text, and `baseline_source`; `table` marks it as a table.
+fn clipping(taffy: &mut TaffyTree<()>, display: Display, baseline_source: BaselineSource, table: bool) -> NodeId {
     let line = text_line(taffy);
     let margin = Rect { left: zero(), right: zero(), top: zero(), bottom: length(5.0) };
     let style = Style {
         display,
+        item_is_table: table,
         overflow: Point { x: Overflow::Hidden, y: Overflow::Hidden },
         size: Size { width: auto(), height: length(40.0) },
         margin,
@@ -626,24 +651,25 @@ fn clipping(taffy: &mut TaffyTree<()>, display: Display, baseline_source: Baseli
 /// Beside a one-line paragraph with 10px of padding below (last baseline 16px down, 14px above its end), the
 /// clipping block's last baseline is its margin edge, 45px down: the group's baselines meet 45px down, so the
 /// paragraph sits 45 - 16 = 29px down, in flex and in grid. With `baseline-source: first` or `last`, or as a flex
-/// container, which is no block container, the clipping box's last baseline is its line's, 16px down and 29px above
-/// its margin edge, and the paragraph stays at the top.
+/// container or a table, which are no block containers, the clipping box's last baseline is its line's, 16px down
+/// and 29px above its margin edge, and the paragraph stays at the top.
 #[test]
 fn a_clipping_blocks_last_baseline_is_its_bottom_margin_edge() {
     let cases = [
-        (Display::Block, BaselineSource::Auto, 29.0),
-        (Display::Block, BaselineSource::First, 0.0),
-        (Display::Block, BaselineSource::Last, 0.0),
-        (Display::Flex, BaselineSource::Auto, 0.0),
+        (Display::Block, BaselineSource::Auto, false, 29.0),
+        (Display::Block, BaselineSource::First, false, 0.0),
+        (Display::Block, BaselineSource::Last, false, 0.0),
+        (Display::Flex, BaselineSource::Auto, false, 0.0),
+        (Display::Block, BaselineSource::Auto, true, 0.0),
     ];
     for container in [Display::Flex, Display::Grid] {
-        for (display, source, expected) in cases {
+        for (display, source, table, expected) in cases {
             let mut taffy: TaffyTree<()> = TaffyTree::new();
-            let clip = clipping(&mut taffy, display, source);
+            let clip = clipping(&mut taffy, display, source, table);
             let paragraph = paragraph(&mut taffy, 1, 10.0, None);
             let root = taffy.new_with_children(last_baseline_container(container), &[clip, paragraph]).unwrap();
             let y = heights(&mut taffy, root, &[clip, paragraph]);
-            assert_eq!(y, [(0.0, 40.0), (expected, 30.0)], "{container:?} {display:?} {source:?}");
+            assert_eq!(y, [(0.0, 40.0), (expected, 30.0)], "{container:?} {display:?} {source:?} {table}");
         }
     }
 }
@@ -653,7 +679,7 @@ fn a_clipping_blocks_last_baseline_is_its_bottom_margin_edge() {
 #[test]
 fn a_containers_last_baseline_can_be_its_clipping_childs_margin_edge() {
     let mut taffy: TaffyTree<()> = TaffyTree::new();
-    let clip = clipping(&mut taffy, Display::Block, BaselineSource::Auto);
+    let clip = clipping(&mut taffy, Display::Block, BaselineSource::Auto, false);
     let outer = taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &[clip]).unwrap();
     let paragraph = paragraph(&mut taffy, 1, 10.0, None);
     let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[outer, paragraph]).unwrap();
