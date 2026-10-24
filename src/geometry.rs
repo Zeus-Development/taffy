@@ -7,6 +7,8 @@ use core::ops::{Add, Sub};
 
 #[cfg(feature = "flexbox")]
 use crate::style::FlexDirection;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The simple absolute horizontal and vertical axis
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -301,18 +303,23 @@ where
     }
 }
 
-impl Rect<Option<f32>> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Rect<Option<LayoutFloat>> {
     /// A [`Rect`] with `None` as all parameters
-    pub const NONE: Rect<Option<f32>> = Self { left: None, right: None, top: None, bottom: None };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const NONE: Rect<Option<LayoutFloat>> = Self { left: None, right: None, top: None, bottom: None };
 }
 
-impl Rect<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Rect<LayoutFloat> {
     /// Creates a new Rect with `0.0` as all parameters
-    pub const ZERO: Rect<f32> = Self { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const ZERO: Rect<LayoutFloat> = Self { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 };
 
     /// Creates a new Rect
     #[must_use]
-    pub const fn new(start: f32, end: f32, top: f32, bottom: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn new(start: LayoutFloat, end: LayoutFloat, top: LayoutFloat, bottom: LayoutFloat) -> Self {
         Self { left: start, right: end, top, bottom }
     }
 
@@ -570,19 +577,23 @@ impl<T> Size<T> {
     }
 }
 
-impl Size<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Size<LayoutFloat> {
     /// A [`Size`] with zero width and height
-    pub const ZERO: Size<f32> = Self { width: 0.0, height: 0.0 };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const ZERO: Size<LayoutFloat> = Self { width: 0.0, height: 0.0 };
 
     /// Applies f32_max to each component separately
     #[inline(always)]
-    pub fn f32_max(self, rhs: Size<f32>) -> Size<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn f32_max(self, rhs: Size<LayoutFloat>) -> Size<LayoutFloat> {
         Size { width: f32_max(self.width, rhs.width), height: f32_max(self.height, rhs.height) }
     }
 
     /// Applies f32_min to each component separately
     #[inline(always)]
-    pub fn f32_min(self, rhs: Size<f32>) -> Size<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn f32_min(self, rhs: Size<LayoutFloat>) -> Size<LayoutFloat> {
         Size { width: f32_min(self.width, rhs.width), height: f32_min(self.height, rhs.height) }
     }
 
@@ -593,19 +604,23 @@ impl Size<f32> {
     }
 }
 
-impl Size<Option<f32>> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Size<Option<LayoutFloat>> {
     /// A [`Size`] with `None` width and height
-    pub const NONE: Size<Option<f32>> = Self { width: None, height: None };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const NONE: Size<Option<LayoutFloat>> = Self { width: None, height: None };
 
     /// A [`Size<Option<f32>>`] with `Some(width)` and `Some(height)` as parameters
     #[must_use]
-    pub const fn new(width: f32, height: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn new(width: LayoutFloat, height: LayoutFloat) -> Self {
         Size { width: Some(width), height: Some(height) }
     }
 
     /// Creates a new [`Size<Option<f32>>`] with either the width or height set based on the provided `direction`
     #[cfg(feature = "flexbox")]
-    pub const fn from_cross(direction: FlexDirection, value: Option<f32>) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn from_cross(direction: FlexDirection, value: Option<LayoutFloat>) -> Self {
         let mut new = Self::NONE;
         if direction.is_row() {
             new.height = value
@@ -620,7 +635,8 @@ impl Size<Option<f32>> {
     ///   - If height is `Some` but width is `None`, then width is computed from height and aspect_ratio
     ///
     /// If aspect_ratio is `None` then this function simply returns self.
-    pub fn maybe_apply_aspect_ratio(self, aspect_ratio: Option<f32>) -> Size<Option<f32>> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn maybe_apply_aspect_ratio(self, aspect_ratio: Option<f32>) -> Size<Option<LayoutFloat>> {
         match aspect_ratio {
             Some(ratio) => match (self.width, self.height) {
                 (Some(width), None) => Size { width: Some(width), height: Some(width / ratio) },
@@ -653,13 +669,15 @@ impl<T> Size<Option<T>> {
 impl Size<Dimension> {
     /// Generates a [`Size<Dimension>`] using length values
     #[must_use]
-    pub const fn from_lengths(width: f32, height: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn from_lengths(width: LayoutFloat, height: LayoutFloat) -> Self {
         Size { width: Dimension(CompactLength::length(width)), height: Dimension(CompactLength::length(height)) }
     }
 
     /// Generates a [`Size<Dimension>`] using percentage values
     #[must_use]
-    pub const fn from_percent(width: f32, height: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn from_percent(width: LayoutFloat, height: LayoutFloat) -> Self {
         Size { width: Dimension(CompactLength::percent(width)), height: Dimension(CompactLength::percent(height)) }
     }
 }
@@ -676,12 +694,14 @@ pub struct Point<T> {
     pub y: T,
 }
 
-impl Point<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Point<LayoutFloat> {
     /// A [`Point`] with values (0,0), representing the origin
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 }
 
-impl Point<Option<f32>> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl Point<Option<LayoutFloat>> {
     /// A [`Point`] with values (None, None)
     pub const NONE: Self = Self { x: None, y: None };
 }

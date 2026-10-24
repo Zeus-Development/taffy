@@ -3,7 +3,7 @@
 //! layout unit is 1/64 px, Chrome's `LayoutUnit`. Taffy's rounding to whole pixels is disabled: Viper lays out without it.
 
 use taffy::prelude::*;
-use taffy::{Overflow, Point};
+use taffy::{LayoutFloat, Overflow, Point};
 
 /// A content-box leaf with a 1px border on every side.
 fn bordered(style: Style) -> Style {
@@ -684,4 +684,38 @@ fn a_containers_last_baseline_can_be_its_clipping_childs_margin_edge() {
     let paragraph = paragraph(&mut taffy, 1, 10.0, None);
     let root = taffy.new_with_children(last_baseline_container(Display::Flex), &[outer, paragraph]).unwrap();
     assert_eq!(heights(&mut taffy, root, &[outer, paragraph]), [(0.0, 45.0), (29.0, 30.0)]);
+}
+
+// VIPER-PATCH(layout-float-alias): every layout number has the type `taffy::LayoutFloat`. The alias is `f32`, so
+// layout arithmetic and every result are unchanged; the whole fork suite passing unchanged is the main proof.
+
+/// The alias is `f32`, layout results have its type, and style values stay `f32`.
+#[test]
+fn layout_numbers_are_the_alias() {
+    use std::any::TypeId;
+    assert_eq!(TypeId::of::<LayoutFloat>(), TypeId::of::<f32>());
+    let layout = Layout::new();
+    let _: (Point<LayoutFloat>, Size<LayoutFloat>, Rect<LayoutFloat>) = (layout.location, layout.size, layout.padding);
+    let _: LayoutFloat = layout.scrollbar_size.width;
+    let available: Option<LayoutFloat> = AvailableSpace::Definite(10.5).into_option();
+    assert_eq!(available, Some(10.5));
+    let style_value: f32 = CompactLength::length(10.5).value();
+    assert_eq!(style_value, 10.5);
+}
+
+/// Two blocks 2^24px and 1px high stack in `f32` sums: the second sits at 2^24px and the container is 2^24px
+/// high, since 2^24 + 1 is not an `f32` (the next one is 2^24 + 2).
+#[test]
+fn layout_sums_are_still_f32_sums() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    taffy.disable_rounding();
+    let block =
+        |height: f32| Style { size: Size { width: length(10.0), height: length(height) }, ..Default::default() };
+    let tall = taffy.new_leaf(block(16_777_216.0)).unwrap();
+    let short = taffy.new_leaf(block(1.0)).unwrap();
+    let root =
+        taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &[tall, short]).unwrap();
+    taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(taffy.layout(short).unwrap().location.y, 16_777_216.0);
+    assert_eq!(taffy.layout(root).unwrap().size.height, 16_777_216.0);
 }

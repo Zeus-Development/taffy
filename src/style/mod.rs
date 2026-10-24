@@ -48,6 +48,8 @@ pub(crate) use self::grid::{NonNamedGridPlacement, OriginZeroGridPlacement};
 use crate::geometry::{Point, Rect, Size};
 use crate::style_helpers::TaffyAuto as _;
 use core::fmt::Debug;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 #[cfg(feature = "grid")]
 use crate::geometry::Line;
@@ -518,7 +520,8 @@ impl Overflow {
     /// Returns `Some(0.0)` if the overflow mode would cause the automatic minimum size of a Flexbox or CSS Grid item
     /// to be `0`. Else returns None.
     #[inline(always)]
-    pub(crate) fn maybe_into_automatic_min_size(self) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn maybe_into_automatic_min_size(self) -> Option<LayoutFloat> {
         match self.is_scroll_container() {
             true => Some(0.0),
             false => None,

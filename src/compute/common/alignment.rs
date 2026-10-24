@@ -1,5 +1,7 @@
 //! Generic CSS alignment code that is shared between both the Flexbox and CSS Grid algorithms.
 use crate::style::{AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignmentSafety};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Resolve the `safe`/`unsafe` overflow-position fallback for a self-level alignment value
 /// (used by `align-self` / `justify-self`-style sites and by absolutely-positioned items in
@@ -26,7 +28,8 @@ pub(crate) fn resolve_self_alignment_safety(alignment: AlignItems, overflows: bo
 /// [`AlignContentKeyword::Normal`] to the keyword it behaves as before calling this function
 /// (if it is not resolved then it is treated as `stretch`).
 pub(crate) fn apply_alignment_fallback(
-    free_space: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    free_space: LayoutFloat,
     num_items: usize,
     alignment_mode: AlignContent,
 ) -> AlignContentKeyword {
@@ -68,13 +71,16 @@ pub(crate) fn apply_alignment_fallback(
 /// CSS Grid does not apply gaps as part of alignment, so the gap parameter should
 /// always be set to zero for CSS Grid.
 pub(crate) fn compute_alignment_offset(
-    free_space: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    free_space: LayoutFloat,
     num_items: usize,
-    gap: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    gap: LayoutFloat,
     alignment_mode: AlignContentKeyword,
     layout_is_flex_reversed: bool,
     is_first: bool,
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> LayoutFloat {
     if is_first {
         match alignment_mode {
             AlignContentKeyword::Start => 0.0,
@@ -98,14 +104,16 @@ pub(crate) fn compute_alignment_offset(
             AlignContentKeyword::SpaceBetween => 0.0,
             AlignContentKeyword::SpaceAround => {
                 if free_space >= 0.0 {
-                    (free_space / num_items as f32) / 2.0
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    (free_space / num_items as LayoutFloat) / 2.0
                 } else {
                     free_space / 2.0
                 }
             }
             AlignContentKeyword::SpaceEvenly => {
                 if free_space >= 0.0 {
-                    free_space / (num_items + 1) as f32
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    free_space / (num_items + 1) as LayoutFloat
                 } else {
                     free_space / 2.0
                 }
@@ -121,9 +129,10 @@ pub(crate) fn compute_alignment_offset(
             | AlignContentKeyword::Center
             | AlignContentKeyword::Normal
             | AlignContentKeyword::Stretch => 0.0,
-            AlignContentKeyword::SpaceBetween => free_space / (num_items - 1) as f32,
-            AlignContentKeyword::SpaceAround => free_space / num_items as f32,
-            AlignContentKeyword::SpaceEvenly => free_space / (num_items + 1) as f32,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            AlignContentKeyword::SpaceBetween => free_space / (num_items - 1) as LayoutFloat,
+            AlignContentKeyword::SpaceAround => free_space / num_items as LayoutFloat,
+            AlignContentKeyword::SpaceEvenly => free_space / (num_items + 1) as LayoutFloat,
         }
     }
 }

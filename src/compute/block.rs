@@ -26,6 +26,8 @@ use crate::{
 use super::float::{BfcSlot, ContentSlot, FloatContext, FloatIntrinsicWidthCalculator, FIT_TOLERANCE};
 #[cfg(feature = "float_layout")]
 use crate::{Clear, Float, FloatDirection};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Compute the block-axis offset that `align-content` applies to the in-flow content of a block
 /// container, given the free space between the container's content box and its content.
@@ -34,7 +36,8 @@ use crate::{Clear, Float, FloatDirection};
 /// distribution keywords (`space-*`, `stretch`) invoke their single-subject fallbacks. This is
 /// used both by block layout and by inline formatting contexts (line boxes) which are laid out
 /// externally to Taffy.
-pub fn compute_block_align_content_offset(align_content: AlignContent, free_space: f32) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+pub fn compute_block_align_content_offset(align_content: AlignContent, free_space: LayoutFloat) -> LayoutFloat {
     let keyword = apply_alignment_fallback(free_space, 1, align_content);
     compute_alignment_offset(free_space, 1, 0.0, keyword, false, true)
 }
@@ -68,7 +71,8 @@ impl BlockFormattingContext {
             y_offset: 0.0,
             insets: [0.0, 0.0],
             content_box_insets: [0.0, 0.0],
-            float_content_contribution: f32::NEG_INFINITY,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            float_content_contribution: LayoutFloat::NEG_INFINITY,
             is_root: true,
             #[cfg(feature = "float_layout")]
             adjoining_floats: [false, false],
@@ -86,14 +90,18 @@ pub struct BlockContext<'bfc> {
     bfc: &'bfc mut BlockFormattingContext,
     /// The y-offset of the border-top of the block node, relative to the to the border-top of the
     /// root node of the Block Formatting Context it belongs to.
-    y_offset: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    y_offset: LayoutFloat,
     /// The x-inset of the border-box in from each side of the block node, relative to the root node of the Block Formatting Context it belongs to.
-    insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    insets: [LayoutFloat; 2],
     /// The x-insets of the content box
-    content_box_insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    content_box_insets: [LayoutFloat; 2],
     /// The height that floats take up in the element (`f32::NEG_INFINITY` if the element's
     /// subtree does not contain any floats)
-    float_content_contribution: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    float_content_contribution: LayoutFloat,
     /// Whether the node is the root of the Block Formatting Context is belongs to.
     is_root: bool,
     /// Whether a float has been placed (on each side) whose position adjoins the current
@@ -111,14 +119,16 @@ pub struct BlockContext<'bfc> {
 
 impl BlockContext<'_> {
     /// Create a sub-`BlockContext` for a child block node
-    pub fn sub_context(&mut self, additional_y_offset: f32, insets: [f32; 2]) -> BlockContext<'_> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn sub_context(&mut self, additional_y_offset: LayoutFloat, insets: [LayoutFloat; 2]) -> BlockContext<'_> {
         let insets = [self.insets[0] + insets[0], self.insets[1] + insets[1]];
         BlockContext {
             bfc: self.bfc,
             y_offset: self.y_offset + additional_y_offset,
             insets,
             content_box_insets: insets,
-            float_content_contribution: f32::NEG_INFINITY,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            float_content_contribution: LayoutFloat::NEG_INFINITY,
             is_root: false,
             // Floats adjoining the parent's current strut also adjoin this block's top strut
             // (if this block's top margin collapses with its first child's, which is checked separately)
@@ -142,13 +152,15 @@ impl BlockContext<'_> {
     ///
     /// Sub-blocks within a Block Formatting Context should use the `Self::sub_context` method to create
     /// a sub-`BlockContext` with `insets` instead.
-    pub fn set_width(&mut self, available_width: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn set_width(&mut self, available_width: LayoutFloat) {
         self.bfc.float_context.set_width(available_width);
     }
 
     /// Set the x-axis content-box insets of the `BlockContext`. These are the difference between the border-box
     /// and the content-box of the box (padding + border + scrollbar_gutter).
-    pub fn apply_content_box_inset(&mut self, content_box_x_insets: [f32; 2]) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn apply_content_box_inset(&mut self, content_box_x_insets: [LayoutFloat; 2]) {
         self.content_box_insets[0] = self.insets[0] + content_box_x_insets[0];
         self.content_box_insets[1] = self.insets[1] + content_box_x_insets[1];
     }
@@ -161,19 +173,22 @@ impl BlockContext<'_> {
 
     /// Whether the float context contains any floats that extend to or below min_y
     #[inline(always)]
-    pub fn has_active_floats(&self, min_y: f32) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn has_active_floats(&self, min_y: LayoutFloat) -> bool {
         self.bfc.float_context.has_active_floats(min_y + self.y_offset)
     }
 
     /// Position a floated box with the context
     pub fn place_floated_box(
         &mut self,
-        floated_box: Size<f32>,
-        min_y: f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        floated_box: Size<LayoutFloat>,
+        min_y: LayoutFloat,
         direction: FloatDirection,
         clear: Clear,
         adjoins_unresolved_strut: bool,
-    ) -> Point<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Point<LayoutFloat> {
         if adjoins_unresolved_strut {
             self.adjoining_floats[direction as usize] = true;
         }
@@ -193,7 +208,8 @@ impl BlockContext<'_> {
     }
 
     /// Search a space suitable for laying out non-floated content into
-    pub fn find_content_slot(&self, min_y: f32, clear: Clear, after: Option<usize>) -> ContentSlot {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn find_content_slot(&self, min_y: LayoutFloat, clear: Clear, after: Option<usize>) -> ContentSlot {
         let mut slot =
             self.bfc.float_context.find_content_slot(min_y + self.y_offset, self.content_box_insets, clear, after);
         slot.y -= self.y_offset;
@@ -205,8 +221,9 @@ impl BlockContext<'_> {
     /// formatting context (whose border box must not overlap floats)
     pub fn find_bfc_slot(
         &self,
-        min_y: f32,
-        margins: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        min_y: LayoutFloat,
+        margins: [LayoutFloat; 2],
         direction: Direction,
         clear: Clear,
         after: Option<usize>,
@@ -225,7 +242,8 @@ impl BlockContext<'_> {
     }
 
     /// Get the bottom of lowest relevant float for the specific clear property
-    pub fn cleared_threshold(&self, clear: Clear) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn cleared_threshold(&self, clear: Clear) -> Option<LayoutFloat> {
         self.bfc.float_context.cleared_threshold(clear).map(|threshold| threshold - self.y_offset)
     }
 
@@ -264,12 +282,14 @@ impl BlockContext<'_> {
 
     /// Update the height that descendent floats consume with the height that floats consume
     /// within a particular child (`child_contribution` is relative to this block's border-top)
-    pub fn add_child_floated_content_height_contribution(&mut self, child_contribution: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn add_child_floated_content_height_contribution(&mut self, child_contribution: LayoutFloat) {
         self.float_content_contribution = self.float_content_contribution.max(child_contribution);
     }
 
     /// Returns the height that descendent floats consume
-    pub fn floated_content_height_contribution(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn floated_content_height_contribution(&self) -> LayoutFloat {
         self.float_content_contribution
     }
 }
@@ -278,7 +298,8 @@ impl BlockContext<'_> {
 impl BlockContext<'_> {
     #[inline(always)]
     /// Returns the height that descendent floats consume (always 0.0 when the float feature is disabled)
-    fn float_content_contribution(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn float_content_contribution(&self) -> LayoutFloat {
         0.0
     }
 }
@@ -322,11 +343,14 @@ struct BlockItem {
     size_style: Size<Dimension>,
 
     /// The base size of this item
-    size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    size: Size<Option<LayoutFloat>>,
     /// The minimum allowable size of this item
-    min_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    min_size: Size<Option<LayoutFloat>>,
     /// The maximum allowable size of this item
-    max_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    max_size: Size<Option<LayoutFloat>>,
 
     /// The overflow style of the item
     overflow: Point<Overflow>,
@@ -352,17 +376,22 @@ struct BlockItem {
     /// The margin of this item
     margin: Rect<LengthPercentageAuto>,
     /// The margin of this item
-    padding: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    padding: Rect<LayoutFloat>,
     /// The margin of this item
-    border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    border: Rect<LayoutFloat>,
     /// The sum of padding and border for this item
-    padding_border_sum: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    padding_border_sum: Size<LayoutFloat>,
 
     /// The computed border box size of this item
-    computed_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    computed_size: Size<LayoutFloat>,
     /// The computed "static position" of this item. The static position is the position
     /// taking into account padding, border, margins, and scrollbar_gutters but not inset
-    static_position: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    static_position: Point<LayoutFloat>,
     /// Whether margins can be collapsed through this item
     can_be_collapsed_through: bool,
 
@@ -909,7 +938,8 @@ fn compute_inner(
 fn generate_item_list(
     tree: &impl LayoutBlockContainer,
     node: NodeId,
-    node_inner_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    node_inner_size: Size<Option<LayoutFloat>>,
 ) -> Vec<BlockItem> {
     tree.child_ids(node)
         .map(|child_node_id| (child_node_id, tree.get_block_child_style(child_node_id)))
@@ -1016,10 +1046,12 @@ fn generate_item_list(
 #[inline]
 fn resolve_stretch_height(
     height_style: Dimension,
-    container_inner_height: Option<f32>,
-    item_margin: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    container_inner_height: Option<LayoutFloat>,
+    item_margin: Rect<LayoutFloat>,
     margins_treated_as_zero: Line<bool>,
-) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> Option<LayoutFloat> {
     if !height_style.is_stretch() {
         return None;
     }
@@ -1039,7 +1071,8 @@ fn determine_content_based_container_width(
     tree: &mut impl LayoutPartialTree,
     items: &[BlockItem],
     available_width: AvailableSpace,
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> LayoutFloat {
     let available_space = Size { width: available_width, height: AvailableSpace::MinContent };
 
     let mut max_child_width = 0.0;
@@ -1097,11 +1130,12 @@ fn perform_final_layout_on_in_flow_children(
     tree: &mut impl LayoutBlockContainer,
     run_mode: RunMode,
     items: &mut [BlockItem],
-    container_outer_width: f32,
-    container_percentage_resolution_height: Option<f32>,
-    content_box_inset: Rect<f32>,
-    resolved_content_box_inset: Rect<f32>,
-    resolved_border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    container_outer_width: LayoutFloat,
+    container_percentage_resolution_height: Option<LayoutFloat>,
+    content_box_inset: Rect<LayoutFloat>,
+    resolved_content_box_inset: Rect<LayoutFloat>,
+    resolved_border: Rect<LayoutFloat>,
     text_align: TextAlign,
     justify_items: AlignItems,
     direction: Direction,
@@ -1110,7 +1144,8 @@ fn perform_final_layout_on_in_flow_children(
     #[cfg(feature = "content_size")] is_scroll_container: bool,
     block_ctx: &mut BlockContext<'_>,
     // VIPER-PATCH(last-baseline): the content's first and last baselines.
-) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Baselines) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> (Rect<LayoutFloat>, LayoutFloat, CollapsibleMarginSet, CollapsibleMarginSet, Baselines) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = (container_outer_width - resolved_content_box_inset.horizontal_axis_sum()).max(0.0);
     let container_percentage_resolution_height =
@@ -1297,7 +1332,8 @@ fn perform_final_layout_on_in_flow_children(
 
             // Handle non-floated boxes
 
-            let mut y_margin_offset: f32 = 0.0;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let mut y_margin_offset: LayoutFloat = 0.0;
             #[cfg(feature = "float_layout")]
             let mut item_avoids_floats = false;
             #[cfg(feature = "float_layout")]
@@ -1457,14 +1493,17 @@ fn perform_final_layout_on_in_flow_children(
             #[cfg(feature = "float_layout")]
             let clear_threshold = block_ctx.cleared_threshold(item.clear);
             #[cfg(feature = "float_layout")]
-            let clear_pos = clear_threshold.unwrap_or(f32::NEG_INFINITY);
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let clear_pos = clear_threshold.unwrap_or(LayoutFloat::NEG_INFINITY);
             #[cfg(not(feature = "float_layout"))]
-            let clear_pos = f32::NEG_INFINITY;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let clear_pos = LayoutFloat::NEG_INFINITY;
 
             // The height consumed by floats within a same-BFC child, relative to the child's
             // border-top. Added to the parent's contribution once the child's position is known.
             #[cfg(feature = "float_layout")]
-            let mut child_float_contribution = f32::NEG_INFINITY;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let mut child_float_contribution = LayoutFloat::NEG_INFINITY;
 
             let mut item_layout = if item.is_in_same_bfc {
                 // Replaced elements may not have a known width (they are sized by their
@@ -1510,7 +1549,8 @@ fn perform_final_layout_on_in_flow_children(
             let x_axis_auto_margin_size = {
                 let auto_margin_count = item_margin.left.is_none() as u8 + item_margin.right.is_none() as u8;
                 if auto_margin_count > 0 {
-                    free_x_space / auto_margin_count as f32
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    free_x_space / auto_margin_count as LayoutFloat
                 } else {
                     0.0
                 }
@@ -1729,7 +1769,8 @@ fn perform_final_layout_on_in_flow_children(
             //
             // VIPER-PATCH(last-baseline): and its last baseline is the last baseline of its last in-flow
             // child that has one (CSS 2.1 §10.8.1, CSS Box Alignment 3 §9.1).
-            let child_baseline = |baseline: Option<f32>| {
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let child_baseline = |baseline: Option<LayoutFloat>| {
                 let size = item_layout.size.height;
                 let baseline = if item.overflow.y.is_scroll_container() {
                     Some(baseline.unwrap_or(size).min(size).max(0.0))

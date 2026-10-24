@@ -33,6 +33,8 @@ use crate::{compute::compute_grid_layout, LayoutGridContainer};
 #[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
 use crate::tree::layout::DetailedLayoutInfo;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The error Taffy generates on invalid operations
 pub type TaffyResult<T> = Result<T, TaffyError>;
@@ -398,7 +400,8 @@ where
     }
 
     #[inline(always)]
-    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn resolve_calc_value(&self, _val: *const (), _basis: LayoutFloat) -> LayoutFloat {
         0.0
     }
 

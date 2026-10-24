@@ -11,6 +11,8 @@ pub(crate) use self::alloc::*;
 /// For when `std` is enabled
 #[cfg(feature = "std")]
 mod std {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    use crate::LayoutFloat;
     /// A string
     pub(crate) type String = std::string::String;
     /// The default type for representing strings in Taffy styles
@@ -42,40 +44,46 @@ mod std {
     /// Rounds to the nearest whole number
     #[must_use]
     #[inline(always)]
-    pub(crate) fn round(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn round(value: LayoutFloat) -> LayoutFloat {
         (value + 0.5).floor()
     }
 
     /// Rounds up to the nearest whole number
     #[must_use]
     #[inline(always)]
-    pub(crate) fn ceil(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn ceil(value: LayoutFloat) -> LayoutFloat {
         value.ceil()
     }
 
     /// Rounds down to the nearest whole number
     #[must_use]
     #[inline(always)]
-    pub(crate) fn floor(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn floor(value: LayoutFloat) -> LayoutFloat {
         value.floor()
     }
 
     /// Computes the absolute value
     #[must_use]
     #[inline(always)]
-    pub(crate) fn abs(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn abs(value: LayoutFloat) -> LayoutFloat {
         value.abs()
     }
 
     /// Returns the largest of two f32 values
     #[inline(always)]
-    pub(crate) fn f32_max(a: f32, b: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn f32_max(a: LayoutFloat, b: LayoutFloat) -> LayoutFloat {
         a.max(b)
     }
 
     /// Returns the smallest of two f32 values
     #[inline(always)]
-    pub(crate) fn f32_min(a: f32, b: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn f32_min(a: LayoutFloat, b: LayoutFloat) -> LayoutFloat {
         a.min(b)
     }
 }
@@ -84,6 +92,8 @@ mod std {
 #[cfg(not(feature = "std"))]
 mod alloc {
     extern crate alloc;
+    // VIPER-PATCH(layout-float-alias): the alias.
+    use crate::LayoutFloat;
 
     /// A string
     pub(crate) type String = alloc::string::String;
@@ -128,13 +138,15 @@ mod alloc {
 
     /// Returns the largest of two f32 values
     #[inline(always)]
-    pub(crate) fn f32_max(a: f32, b: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn f32_max(a: LayoutFloat, b: LayoutFloat) -> LayoutFloat {
         a.max(b)
     }
 
     /// Returns the smallest of two f32 values
     #[inline(always)]
-    pub(crate) fn f32_min(a: f32, b: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn f32_min(a: LayoutFloat, b: LayoutFloat) -> LayoutFloat {
         a.min(b)
     }
 }
@@ -143,9 +155,12 @@ mod alloc {
 /// Copied from `num-traits` crate
 #[cfg(not(feature = "std"))]
 mod polyfill {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    use crate::LayoutFloat;
     #[must_use]
     #[inline(always)]
-    fn fract(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn fract(value: LayoutFloat) -> LayoutFloat {
         if value == 0.0 {
             0.0
         } else {
@@ -155,7 +170,8 @@ mod polyfill {
 
     #[must_use]
     #[inline(always)]
-    pub(crate) fn round(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn round(value: LayoutFloat) -> LayoutFloat {
         let f = fract(value);
         if f.is_nan() || f == 0.0 {
             value
@@ -174,7 +190,8 @@ mod polyfill {
 
     #[must_use]
     #[inline(always)]
-    pub(crate) fn floor(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn floor(value: LayoutFloat) -> LayoutFloat {
         let f = fract(value);
         if f.is_nan() || f == 0.0 {
             value
@@ -187,7 +204,8 @@ mod polyfill {
 
     #[must_use]
     #[inline(always)]
-    pub(crate) fn ceil(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn ceil(value: LayoutFloat) -> LayoutFloat {
         let f = fract(value);
         if f.is_nan() || f == 0.0 {
             value
@@ -201,13 +219,15 @@ mod polyfill {
     /// Computes the absolute value
     #[must_use]
     #[inline(always)]
-    pub(crate) fn abs(value: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub(crate) fn abs(value: LayoutFloat) -> LayoutFloat {
         if value.is_sign_positive() {
             return value;
         } else if value.is_sign_negative() {
             return -value;
         } else {
-            f32::NAN
+            // VIPER-PATCH(layout-float-alias): the alias.
+            LayoutFloat::NAN
         }
     }
 }

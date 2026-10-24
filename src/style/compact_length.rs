@@ -4,6 +4,8 @@ use super::LengthPercentage;
 use crate::style_helpers::{
     FromFr, FromLength, FromPercent, TaffyAuto, TaffyFitContent, TaffyMaxContent, TaffyMinContent, TaffyZero,
 };
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Note: these two functions are copied directly from the std (core) library. But by duplicating them
 /// here we can reduce MSRV from 1.84 all the way down to 1.65 while retaining const constructors and
@@ -552,9 +554,10 @@ impl CompactLength {
     #[inline(always)]
     pub fn resolved_percentage_size(
         self,
-        parent_size: f32,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: LayoutFloat,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         match self.tag() {
             CompactLength::PERCENT_TAG => Some(self.value() * parent_size),
             #[cfg(feature = "calc")]

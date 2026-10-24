@@ -34,6 +34,8 @@ use types::{GridItem, GridTrackKind, TrackCounts};
 pub(crate) use types::{GridCoordinate, GridLine, OriginZeroLine, MAX_GRID_TRACKS, MAX_OZ_LINE, MIN_OZ_LINE};
 
 pub use types::{GridLineNames, GridLineNamesIter};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 mod alignment;
 mod explicit_grid;
@@ -53,24 +55,32 @@ struct GridContainerConstants {
     /// Which positioning schemes the container is a containing block for
     containing_block_claims: ContainingBlockClaims,
     /// The container's resolved padding
-    padding: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    padding: Rect<LayoutFloat>,
     /// The container's resolved border
-    border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    border: Rect<LayoutFloat>,
     /// The sum of padding and border in each axis
-    padding_border_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    padding_border_size: Size<LayoutFloat>,
     /// The container's border-box min size, if definite
-    min_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    min_size: Size<Option<LayoutFloat>>,
     /// The container's border-box max size, if definite
-    max_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    max_size: Size<Option<LayoutFloat>>,
     /// The container's border-box preferred size, if definite
-    preferred_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    preferred_size: Size<Option<LayoutFloat>>,
     /// The space reserved for scrollbars in each axis
-    scrollbar_gutter: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    scrollbar_gutter: Point<LayoutFloat>,
     /// Whether the container's overflow makes it a scroll container
     #[cfg(feature = "content_size")]
     is_scroll_container: bool,
     /// Padding, border and scrollbar gutter combined
-    content_box_inset: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    content_box_inset: Rect<LayoutFloat>,
     /// The container's `align-content` style
     align_content: AlignContent,
     /// The container's `justify-content` style
@@ -82,13 +92,17 @@ struct GridContainerConstants {
     /// The space available to size the grid tracks in each axis
     available_grid_space: Size<AvailableSpace>,
     /// The container's border-box size, if definite
-    outer_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    outer_node_size: Size<Option<LayoutFloat>>,
     /// The container's content-box min size, if definite
-    inner_min_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_min_size: Size<Option<LayoutFloat>>,
     /// The container's content-box max size, if definite
-    inner_max_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_max_size: Size<Option<LayoutFloat>>,
     /// The container's content-box size, if definite
-    inner_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
 }
 
 /// Resolve the grid container's style against the layout inputs (step 1 of `compute_grid_layout`)
@@ -450,12 +464,14 @@ fn grid_layout<Tree: LayoutGridContainer>(
         &mut columns,
         &mut rows,
         &mut items,
-        |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        |track: &GridTrack, parent_size: Option<LayoutFloat>, tree: &Tree| {
             track.max_track_sizing_function.definite_value(parent_size, |val, basis| tree.calc(val, basis))
         },
         has_baseline_aligned_item,
     );
-    let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<LayoutFloat>();
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
 
     // If only the container's width has been requested then we can skip sizing the rows entirely (which avoids
@@ -486,7 +502,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
         |track: &GridTrack, _, _| Some(track.base_size),
         false, // TODO: Support baseline alignment in the vertical axis
     );
-    let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<LayoutFloat>();
 
     debug_log!("initial_column_sum", dbg:initial_column_sum);
     debug_log!(dbg: columns.iter().map(|track| track.base_size).collect::<Vec<_>>());
@@ -658,8 +675,9 @@ fn grid_layout<Tree: LayoutGridContainer>(
     if (intrinsic_column_contribution_changed && !has_percentage_column)
         || (intrinsic_row_contribution_changed && !has_percentage_row)
     {
-        let final_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
-        let final_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let final_column_sum = columns.iter().map(|track| track.base_size).sum::<LayoutFloat>();
+        let final_row_sum = rows.iter().map(|track| track.base_size).sum::<LayoutFloat>();
 
         if intrinsic_column_contribution_changed && !has_percentage_column {
             container_border_box.width = resolved_style_size
@@ -727,7 +745,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
 
     // Position in-flow children (stored in items vector)
     // VIPER-PATCH(last-baseline): through one function, which `justify-self: last baseline` groups call twice.
-    let position_item = |tree: &mut Tree, index: usize, item: &mut GridItem, inline_shims: Line<f32>| {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let position_item = |tree: &mut Tree, index: usize, item: &mut GridItem, inline_shims: Line<LayoutFloat>| {
         // Tracks are stored in logical order. In RTL the physical offsets are assigned
         // right-to-left, so an item's physical left edge is derived from its logical end
         // line and its physical right edge from its logical start line.
@@ -933,7 +952,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
 
     // Determine the grid container baseline(s) (currently we only compute the first baseline)
     // Layout containment suppresses the box's baseline for baseline-alignment purposes
-    let grid_container_baseline: Option<f32> = if contain.suppresses_baseline() {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let grid_container_baseline: Option<LayoutFloat> = if contain.suppresses_baseline() {
         None
     } else {
         // Get the row index of the first row containing items
@@ -1009,10 +1029,11 @@ fn resolve_static_position_grid_area<S: CheapCloneStr>(
     rows: &[GridTrack],
     columns: &[GridTrack],
     direction: Direction,
-    border: Rect<f32>,
-    scrollbar_gutter: Point<f32>,
-    container_border_box: Size<f32>,
-) -> Rect<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    border: Rect<LayoutFloat>,
+    scrollbar_gutter: Point<LayoutFloat>,
+    container_border_box: Size<LayoutFloat>,
+) -> Rect<LayoutFloat> {
     // Convert grid-col-{start/end} into Option's of indexes into the columns vector
     // The Option is None if the style property is Auto and an unresolvable Span
     let maybe_col_indexes = name_resolver
@@ -1033,11 +1054,13 @@ fn resolve_static_position_grid_area<S: CheapCloneStr>(
         });
 
     /// Resolve a grid line (by track vector index) used as a start edge to a position
-    fn line_as_start_edge(tracks: &[GridTrack], index: usize) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn line_as_start_edge(tracks: &[GridTrack], index: usize) -> LayoutFloat {
         tracks.get(index + 1).unwrap_or(&tracks[index]).offset
     }
     /// Resolve a grid line (by track vector index) used as an end edge to a position
-    fn line_as_end_edge(tracks: &[GridTrack], index: usize) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn line_as_end_edge(tracks: &[GridTrack], index: usize) -> LayoutFloat {
         if index == 0 {
             tracks.get(1).unwrap_or(&tracks[0]).offset
         } else {
@@ -1050,7 +1073,8 @@ fn resolve_static_position_grid_area<S: CheapCloneStr>(
     // used as an inline-end edge resolves to the physical *left* edge (offset) of
     // the track that precedes it.
     /// Resolve a grid line used as an inline-start edge to a physical right x-position (RTL)
-    fn rtl_line_as_start_edge(tracks: &[GridTrack], index: usize) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn rtl_line_as_start_edge(tracks: &[GridTrack], index: usize) -> LayoutFloat {
         if tracks.len() > index + 1 {
             // The gutter's offset is the physical right edge of the track that follows the line
             tracks[index].offset
@@ -1064,7 +1088,8 @@ fn resolve_static_position_grid_area<S: CheapCloneStr>(
         }
     }
     /// Resolve a grid line used as an inline-end edge to a physical left x-position (RTL)
-    fn rtl_line_as_end_edge(tracks: &[GridTrack], index: usize) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn rtl_line_as_end_edge(tracks: &[GridTrack], index: usize) -> LayoutFloat {
         if index == 0 {
             tracks[0].offset
         } else {
@@ -1126,10 +1151,12 @@ impl<S: CheapCloneStr> DetailedGridTracksInfo<S> {
         placement: Line<GridPlacement<S>>,
         areas: &GridAreasMap<S>,
         axis: GridAreaAxis,
-        padding_start: f32,
-        padding_end: f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        padding_start: LayoutFloat,
+        padding_end: LayoutFloat,
         is_reversed: bool,
-    ) -> Line<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Line<LayoutFloat> {
         let track_counts = TrackCounts {
             negative_implicit: self.negative_implicit_tracks,
             explicit: self.explicit_tracks,
@@ -1179,7 +1206,8 @@ impl<S: CheapCloneStr> DetailedGridTracksInfo<S> {
     }
 
     /// Resolve a track edge, excluding gutters that overlap across a collapsed track run.
-    fn absolute_track_edge(&self, index: usize, is_start: bool, is_reversed: bool) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn absolute_track_edge(&self, index: usize, is_start: bool, is_reversed: bool) -> LayoutFloat {
         let range_index = self.collapsed_tracks.partition_point(|range| range.end <= index);
         let range = self.collapsed_tracks.get(range_index).filter(|range| range.contains(&index));
         let track = range
@@ -1203,7 +1231,8 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
     /// format of the `grid-template-rows` property
     /// (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn write_grid_template_rows(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn write_grid_template_rows(&self, out: &mut impl core::fmt::Write, zoom: LayoutFloat) -> core::fmt::Result {
         self.rows.write_track_list(out, zoom)
     }
 
@@ -1211,21 +1240,24 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
     /// format of the `grid-template-columns` property
     /// (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn write_grid_template_columns(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn write_grid_template_columns(&self, out: &mut impl core::fmt::Write, zoom: LayoutFloat) -> core::fmt::Result {
         self.columns.write_track_list(out, zoom)
     }
 
     /// Serialize the used row track sizes and line names in the resolved value format of the
     /// `grid-template-rows` property (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn grid_template_rows(&self, zoom: f32) -> String {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn grid_template_rows(&self, zoom: LayoutFloat) -> String {
         self.rows.to_track_list_string(zoom)
     }
 
     /// Serialize the used column track sizes and line names in the resolved value format of the
     /// `grid-template-columns` property (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn grid_template_columns(&self, zoom: f32) -> String {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn grid_template_columns(&self, zoom: LayoutFloat) -> String {
         self.columns.to_track_list_string(zoom)
     }
 
@@ -1236,8 +1268,9 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
         grid_row: Line<GridPlacement<S>>,
         grid_column: Line<GridPlacement<S>>,
         direction: Direction,
-        padding_box: Rect<f32>,
-    ) -> Rect<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        padding_box: Rect<LayoutFloat>,
+    ) -> Rect<LayoutFloat> {
         let columns = self.columns.resolve_absolute_grid_axis(
             grid_column,
             &self.areas,
@@ -1265,7 +1298,8 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
     /// that precedes it), so the area excludes any gutter or content-alignment spacing around it.
     ///
     /// Returns `None` if `item_index` is out of bounds.
-    pub fn item_grid_area(&self, item_index: usize) -> Option<(Point<f32>, Size<f32>)> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn item_grid_area(&self, item_index: usize) -> Option<(Point<LayoutFloat>, Size<LayoutFloat>)> {
         let item = self.items.get(item_index)?;
         let start_col = self.columns.positions[item.column_start as usize - 1];
         let end_col = self.columns.positions[item.column_end as usize - 2];
@@ -1290,7 +1324,8 @@ pub struct DetailedGridTracksInfo<S: CheapCloneStr = DefaultCheapStr> {
     /// The start and end position of each track relative to the grid container's border box.
     /// These positions account for the container's border and padding, the `gap` property,
     /// content alignment (`align-content`/`justify-content`), and collapsed tracks.
-    pub positions: Vec<Line<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub positions: Vec<Line<LayoutFloat>>,
 
     /// Sorted, disjoint ranges of collapsed `auto-fit` tracks (indices into `positions`), whose
     /// adjacent gutters overlap when resolving absolute grid-area edges. Empty (and never
@@ -1300,7 +1335,8 @@ pub struct DetailedGridTracksInfo<S: CheapCloneStr = DefaultCheapStr> {
     /// The position of the axis' single grid line relative to the grid container's border box
     /// when the axis has no tracks (an empty grid still contains one grid line in each axis,
     /// positioned by content alignment). `None` when the axis has tracks.
-    pub empty_axis_line: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub empty_axis_line: Option<LayoutFloat>,
 
     /// The names of each *explicit* grid line. Stored line `i` (0-indexed) bounds the start of
     /// explicit track `i`; use [`DetailedGridTracksInfo::names_for_line`] or
@@ -1312,7 +1348,8 @@ pub struct DetailedGridTracksInfo<S: CheapCloneStr = DefaultCheapStr> {
 impl<S: CheapCloneStr> DetailedGridTracksInfo<S> {
     /// Get the start and end position of each track relative to the grid container's border box,
     /// along with the index ranges of any runs of collapsed `auto-fit` tracks
-    fn positions_from_grid_track_layout(grid_tracks: &[GridTrack]) -> (Vec<Line<f32>>, Vec<Range<usize>>) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn positions_from_grid_track_layout(grid_tracks: &[GridTrack]) -> (Vec<Line<LayoutFloat>>, Vec<Range<usize>>) {
         let mut positions = Vec::with_capacity(grid_tracks.len() / 2);
         let mut collapsed_tracks: Vec<Range<usize>> = Vec::new();
         for track in grid_tracks.iter().filter(|track| track.kind == GridTrackKind::Track) {
@@ -1376,7 +1413,8 @@ impl<S: CheapCloneStr> DetailedGridTracksInfo<S> {
     /// resolved value format of the `grid-template-rows`/`grid-template-columns` properties
     /// (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn write_track_list(&self, out: &mut impl core::fmt::Write, zoom: f32) -> core::fmt::Result {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn write_track_list(&self, out: &mut impl core::fmt::Write, zoom: LayoutFloat) -> core::fmt::Result {
         /// Write a bracketed line name group (e.g. `[foo bar]`)
         fn write_line_names<S: CheapCloneStr>(out: &mut impl core::fmt::Write, names: &[S]) -> core::fmt::Result {
             out.write_char('[')?;
@@ -1421,7 +1459,8 @@ impl<S: CheapCloneStr> DetailedGridTracksInfo<S> {
     /// the `grid-template-rows`/`grid-template-columns` properties
     /// (see <https://www.w3.org/TR/css-grid-1/#resolved-track-list>)
     /// Track sizes are divided by `zoom` (the container's effective CSS `zoom`, or `1.0`) to give unzoomed px.
-    pub fn to_track_list_string(&self, zoom: f32) -> String {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn to_track_list_string(&self, zoom: LayoutFloat) -> String {
         let mut out = String::new();
         self.write_track_list(&mut out, zoom).expect("writing to a String cannot fail");
         out
@@ -1473,11 +1512,13 @@ impl DetailedGridItemsInfo {
 /// traversed from the end: the largest row end, then column end, then the later item. Row indexes are into the
 /// track vector, where lines and tracks alternate, so an area starts in the last row when its start line is two
 /// before that row's end line.
-fn grid_last_baseline(items: &[GridItem]) -> Option<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn grid_last_baseline(items: &[GridItem]) -> Option<LayoutFloat> {
     let last_row_end = items.iter().map(|item| item.row_indexes.end).max()?;
     let starts_in_last_row = |item: &&GridItem| item.row_indexes.start + 2 == last_row_end;
     let ends_in_last_row = |item: &&GridItem| item.row_indexes.end == last_row_end;
-    let position = |item: &GridItem, baseline: Option<f32>| item.y_position + baseline.unwrap_or(item.height);
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let position = |item: &GridItem, baseline: Option<LayoutFloat>| item.y_position + baseline.unwrap_or(item.height);
     let last_group = items.iter().filter(ends_in_last_row).find(|item| item.participates_in_last_baseline_alignment());
     let first_group = || items.iter().filter(starts_in_last_row).find(|item| item.participates_in_baseline_alignment());
     let grid_order = |item: &&GridItem| (item.row_indexes.end, item.column_indexes.end);
@@ -1502,11 +1543,13 @@ fn grid_last_baseline(items: &[GridItem]) -> Option<f32> {
 fn justify_last_baseline_shims(
     items: &mut [GridItem],
     direction: Direction,
-    mut end_aligned_x: impl FnMut(usize, &mut GridItem) -> f32,
-) -> Vec<Line<f32>> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    mut end_aligned_x: impl FnMut(usize, &mut GridItem) -> LayoutFloat,
+) -> Vec<Line<LayoutFloat>> {
     let mut shims = Vec::new();
     shims.resize(items.len(), Line { start: 0.0, end: 0.0 });
-    let participants: Vec<(usize, u16, f32)> = items
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let participants: Vec<(usize, u16, LayoutFloat)> = items
         .iter_mut()
         .enumerate()
         .filter(|(_, item)| item.participates_in_inline_last_baseline_alignment())

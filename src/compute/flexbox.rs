@@ -24,6 +24,8 @@ use super::common::alignment::apply_alignment_fallback;
 #[cfg(feature = "content_size")]
 use super::common::scrollable_overflow::compute_scrollable_overflow_contribution;
 use super::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The intermediate results of a flexbox calculation for a single item
 struct FlexItem {
@@ -34,14 +36,17 @@ struct FlexItem {
     order: u32,
 
     /// The base size of this item
-    size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    size: Size<Option<LayoutFloat>>,
     /// The raw size style of this item. Used to detect and resolve sizing
     /// keywords (`min-content`, `max-content`, `fit-content`, `fit-content(...)`, and `stretch`)
     size_style: Size<Dimension>,
     /// The minimum allowable size of this item
-    min_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    min_size: Size<Option<LayoutFloat>>,
     /// The maximum allowable size of this item
-    max_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    max_size: Size<Option<LayoutFloat>>,
     /// The aspect ratio of this item
     aspect_ratio: Option<f32>,
     // VIPER-PATCH(flex-aspect-ratio): from upstream commit eb2c9e1a (Nico Burns, MIT): the two fields below,
@@ -77,48 +82,63 @@ struct FlexItem {
 
     /// The minimum size of the item. This differs from min_size above because it also
     /// takes into account content based automatic minimum sizes
-    resolved_minimum_main_size: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    resolved_minimum_main_size: LayoutFloat,
 
     /// The `position: relative` offset of this item, resolved to (width, height) in the
     /// container's coordinate space (zero for non-relative items)
-    relative_inset: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    relative_inset: Size<LayoutFloat>,
     /// The margin of this item
-    margin: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    margin: Rect<LayoutFloat>,
     /// Whether each margin is an auto margin or not
     margin_is_auto: Rect<bool>,
     /// The padding of this item
-    padding: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    padding: Rect<LayoutFloat>,
     /// The border of this item
-    border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    border: Rect<LayoutFloat>,
 
     /// The default size of this item
-    flex_basis: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    flex_basis: LayoutFloat,
     /// The default size of this item, minus padding and border
-    inner_flex_basis: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_flex_basis: LayoutFloat,
     /// The amount by which this item has deviated from its target size
-    violation: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    violation: LayoutFloat,
     /// Is the size of this item locked
     frozen: bool,
 
     /// Either the max- or min- content flex fraction
     /// See https://www.w3.org/TR/css-flexbox-1/#intrinsic-main-sizes
-    content_flex_fraction: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    content_flex_fraction: LayoutFloat,
 
     /// The proposed inner size of this item
-    hypothetical_inner_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    hypothetical_inner_size: Size<LayoutFloat>,
     /// The proposed outer size of this item
-    hypothetical_outer_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    hypothetical_outer_size: Size<LayoutFloat>,
     /// The size that this item wants to be
-    target_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    target_size: Size<LayoutFloat>,
     /// The size that this item wants to be, plus any padding and border
-    outer_target_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    outer_target_size: Size<LayoutFloat>,
 
     /// The position of the bottom edge of this item
-    baseline: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    baseline: LayoutFloat,
     // VIPER-PATCH(last-baseline): the item's last baseline, beside its first.
     /// The position of this item's last baseline: from its margin box's top edge while lines are aligned, then
     /// from the container's border box
-    last_baseline: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    last_baseline: LayoutFloat,
     /// Whether the item's layout reported a last baseline (else `last_baseline` is synthesized from its border box)
     has_last_baseline: bool,
 
@@ -126,12 +146,14 @@ struct FlexItem {
     ///
     /// Offset is the relative position from the item's natural flow position based on
     /// relative position values, alignment, and justification. Does not include margin/padding/border.
-    offset_main: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    offset_main: LayoutFloat,
     /// A temporary value for the cross offset
     ///
     /// Offset is the relative position from the item's natural flow position based on
     /// relative position values, alignment, and justification. Does not include margin/padding/border.
-    offset_cross: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    offset_cross: LayoutFloat,
 
     /// Out-of-flow candidates bubbled out of this item's subtree. Anchors are relative to the
     /// container's border box (translated when the item's final layout is computed).
@@ -168,7 +190,8 @@ impl FlexItem {
     /// are aligned. Horizontal text has no baseline across a column, so it is synthesized from the border box at the
     /// line-under edge of the axis-compatible writing mode, `vertical-lr` or `vertical-rl`: the left edge (CSS Box
     /// Alignment 3 §9.1).
-    fn last_baseline_offset(&self, constants: &AlgoConstants) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn last_baseline_offset(&self, constants: &AlgoConstants) -> LayoutFloat {
         if constants.is_row {
             self.last_baseline
         } else {
@@ -184,8 +207,9 @@ impl FlexItem {
 fn last_baseline_group(
     items: &[FlexItem],
     constants: &AlgoConstants,
-    outer_cross: impl Fn(&FlexItem) -> f32,
-) -> Line<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    outer_cross: impl Fn(&FlexItem) -> LayoutFloat,
+) -> Line<LayoutFloat> {
     let participants = items.iter().filter(|item| item.participates_in_last_baseline_alignment(constants.dir));
     participants.fold(Line { start: 0.0, end: 0.0 }, |group, item| {
         let above = item.last_baseline_offset(constants);
@@ -196,7 +220,8 @@ fn last_baseline_group(
 // VIPER-PATCH(last-baseline): the shared baselines of a row's two groups.
 /// The first baseline shared by the line's first-baseline group (`start`) and the last baseline shared by its
 /// last-baseline group (`end`), from the container's border box, once the items are laid out.
-fn line_shared_baselines(line: &FlexLine, constants: &AlgoConstants) -> Line<Option<f32>> {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn line_shared_baselines(line: &FlexLine, constants: &AlgoConstants) -> Line<Option<LayoutFloat>> {
     let first = line.items.iter().find(|item| item.participates_in_baseline_alignment(constants.dir));
     let last = line.items.iter().find(|item| item.participates_in_last_baseline_alignment(constants.dir));
     Line { start: first.map(|item| item.baseline), end: last.map(|item| item.last_baseline) }
@@ -207,9 +232,11 @@ struct FlexLine<'a> {
     /// The slice of items to iterate over during computation of this line
     items: &'a mut [FlexItem],
     /// The dimensions of the cross-axis
-    cross_size: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    cross_size: LayoutFloat,
     /// The relative offset of the cross-axis
-    offset_cross: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    offset_cross: LayoutFloat,
 }
 
 /// Values that can be cached during the flexbox algorithm
@@ -235,21 +262,27 @@ struct AlgoConstants {
     line_count: Option<u16>,
 
     /// The item's min_size style
-    min_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    min_size: Size<Option<LayoutFloat>>,
     /// The item's max_size style
-    max_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    max_size: Size<Option<LayoutFloat>>,
     /// The border of this section
-    border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    border: Rect<LayoutFloat>,
     /// The space between the content box and the border box.
     /// This consists of padding + border + scrollbar_gutter.
-    content_box_inset: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    content_box_inset: Rect<LayoutFloat>,
     /// The size reserved for scrollbar gutters in each axis
-    scrollbar_gutter: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    scrollbar_gutter: Point<LayoutFloat>,
     /// Whether the node being laid out is a scroll container
     #[cfg(feature = "content_size")]
     is_scroll_container: bool,
     /// The gap of this section
-    gap: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    gap: Size<LayoutFloat>,
     /// The align_items property of this node
     align_items: AlignItems,
     /// The align_content property of this node
@@ -258,9 +291,11 @@ struct AlgoConstants {
     justify_content: JustifyContent,
 
     /// The border-box size of the node being laid out (if known)
-    node_outer_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    node_outer_size: Size<Option<LayoutFloat>>,
     /// The content-box size of the node being laid out (if known)
-    node_inner_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    node_inner_size: Size<Option<LayoutFloat>>,
     /// Whether the known main size of the node (if any) is definite. This is `false` when a parent
     /// imposes a main size on this node that is derived from the node's own content, in which case
     /// it is indefinite for the purposes of resolving percentage sizes of items and collecting items
@@ -278,9 +313,11 @@ struct AlgoConstants {
     cross_axis_available_space_is_definite: bool,
 
     /// The size of the virtual container containing the flex items.
-    container_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    container_size: Size<LayoutFloat>,
     /// The size of the internal container
-    inner_container_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_container_size: Size<LayoutFloat>,
 }
 
 impl AlgoConstants {
@@ -289,11 +326,13 @@ impl AlgoConstants {
     /// number of lines (after subtracting the cross-axis gaps between them).
     /// See <https://github.com/w3c/csswg-drafts/issues/13414>
     #[inline]
-    fn divided_cross_space(&self, cross_available_space: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn divided_cross_space(&self, cross_available_space: LayoutFloat) -> LayoutFloat {
         #[cfg(feature = "flexbox_balance")]
         if let Some(line_count) = self.line_count {
             if line_count > 1 {
-                let line_count = line_count as f32;
+                // VIPER-PATCH(layout-float-alias): the alias.
+                let line_count = line_count as LayoutFloat;
                 return (cross_available_space - (line_count - 1.0) * self.gap.cross(self.dir)) / line_count;
             }
         }
@@ -690,9 +729,11 @@ fn resolve_normal_alignment(alignment: AlignItems) -> AlignItems {
 fn compute_constants(
     tree: &impl LayoutFlexboxContainer,
     style: impl FlexboxContainerStyle,
-    known_dimensions: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    known_dimensions: Size<Option<LayoutFloat>>,
     known_dimensions_are_definite: Size<bool>,
-    parent_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    parent_size: Size<Option<LayoutFloat>>,
     available_space: Size<AvailableSpace>,
 ) -> AlgoConstants {
     let dir = style.flex_direction();
@@ -804,7 +845,8 @@ fn compute_constants(
 
 /// Resolve a `position: relative` item's inset to a single offset in the container's flex axes,
 /// accounting for flex direction and writing direction.
-fn resolve_relative_inset(inset: Rect<Option<f32>>, constants: &AlgoConstants) -> Size<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn resolve_relative_inset(inset: Rect<Option<LayoutFloat>>, constants: &AlgoConstants) -> Size<LayoutFloat> {
     let direction = constants.dir;
     let is_rtl_row = direction.is_row() && constants.layout_direction.is_rtl();
     let is_rtl_column = direction.is_column() && constants.layout_direction.is_rtl();
@@ -954,7 +996,8 @@ fn generate_anonymous_flex_items(
 #[inline]
 #[must_use]
 fn determine_available_space(
-    known_dimensions: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    known_dimensions: Size<Option<LayoutFloat>>,
     outer_available_space: Size<AvailableSpace>,
     constants: &AlgoConstants,
 ) -> Size<AvailableSpace> {
@@ -1460,7 +1503,8 @@ fn collect_balanced_flex_lines<'a>(
         return lines;
     }
 
-    let line_break_size = main_axis_available_space.into_option().unwrap_or(f32::INFINITY);
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let line_break_size = main_axis_available_space.into_option().unwrap_or(LayoutFloat::INFINITY);
     let min_line_count = constants.line_count.unwrap_or(1) as usize;
     let item_counts = balance::balanced_line_item_counts(
         flex_items.iter().map(|item| item.hypothetical_outer_size.main(constants.dir)),
@@ -1517,7 +1561,8 @@ fn determine_container_main_size(
     let dir = constants.dir;
     let main_content_box_inset = constants.content_box_inset.main_axis_sum(constants.dir);
 
-    let outer_main_size: f32 = constants.node_outer_size.main(constants.dir).unwrap_or_else(|| {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let outer_main_size: LayoutFloat = constants.node_outer_size.main(constants.dir).unwrap_or_else(|| {
         match available_space.main(dir) {
             AvailableSpace::Definite(main_axis_available_space) => {
                 let main_axis_gap = constants.gap.main(constants.dir);
@@ -1527,11 +1572,13 @@ fn determine_container_main_size(
                         + child.margin.main_axis_sum(constants.dir))
                     .max(padding_border_sum)
                 };
-                let longest_line_length: f32 = lines
+                // VIPER-PATCH(layout-float-alias): the alias.
+                let longest_line_length: LayoutFloat = lines
                     .iter()
                     .map(|line| {
                         let line_main_axis_gap = sum_axis_gaps(main_axis_gap, line.items.len());
-                        let total_target_size = line.items.iter().map(item_main_length).sum::<f32>();
+                        // VIPER-PATCH(layout-float-alias): the alias.
+                        let total_target_size = line.items.iter().map(item_main_length).sum::<LayoutFloat>();
                         total_target_size + line_main_axis_gap
                     })
                     .max_by(|a, b| a.total_cmp(b))
@@ -1549,7 +1596,8 @@ fn determine_container_main_size(
                     if item_count == 0 {
                         return size;
                     }
-                    let mut item_lengths: Vec<f32> = new_vec_with_capacity(item_count);
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    let mut item_lengths: Vec<LayoutFloat> = new_vec_with_capacity(item_count);
                     for line in lines.iter() {
                         for child in line.items.iter() {
                             item_lengths.push(item_main_length(child));
@@ -1557,14 +1605,17 @@ fn determine_container_main_size(
                     }
                     let item_counts = balance::balanced_line_item_counts(
                         item_lengths.iter().copied(),
-                        f32::INFINITY,
+                        // VIPER-PATCH(layout-float-alias): the alias.
+                        LayoutFloat::INFINITY,
                         main_axis_gap,
                         min_line_count.max(1) as usize,
                     );
-                    let mut widest_line_length: f32 = 0.0;
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    let mut widest_line_length: LayoutFloat = 0.0;
                     let mut index = 0;
                     for count in item_counts {
-                        let line_length: f32 = item_lengths[index..index + count].iter().sum::<f32>()
+                        // VIPER-PATCH(layout-float-alias): the alias.
+                        let line_length: LayoutFloat = item_lengths[index..index + count].iter().sum::<LayoutFloat>()
                             + sum_axis_gaps(main_axis_gap, count);
                         widest_line_length = widest_line_length.max(line_length);
                         index += count;
@@ -1580,7 +1631,8 @@ fn determine_container_main_size(
                 }
             }
             AvailableSpace::MinContent if constants.is_wrap => {
-                let longest_line_length: f32 = lines
+                // VIPER-PATCH(layout-float-alias): the alias.
+                let longest_line_length: LayoutFloat = lines
                     .iter()
                     .map(|line| {
                         let line_main_axis_gap = sum_axis_gaps(constants.gap.main(constants.dir), line.items.len());
@@ -1593,7 +1645,8 @@ fn determine_container_main_size(
                                     + child.margin.main_axis_sum(constants.dir))
                                 .max(padding_border_sum)
                             })
-                            .sum::<f32>();
+                            // VIPER-PATCH(layout-float-alias): the alias.
+                            .sum::<LayoutFloat>();
                         total_target_size + line_main_axis_gap
                     })
                     .max_by(|a, b| a.total_cmp(b))
@@ -1636,7 +1689,8 @@ fn determine_container_main_size(
                             .unwrap_or(item.resolved_minimum_main_size)
                             .max(item.resolved_minimum_main_size);
                         let max_main_size =
-                            style_max.maybe_min(flex_basis_max).or(flex_basis_max).unwrap_or(f32::INFINITY);
+                            // VIPER-PATCH(layout-float-alias): the alias.
+                            style_max.maybe_min(flex_basis_max).or(flex_basis_max).unwrap_or(LayoutFloat::INFINITY);
 
                         let content_contribution = match (min_main_size, style_preferred, max_main_size) {
                             // If the clamping values are such that max <= min, then we can avoid the expensive step of computing the content size
@@ -1808,7 +1862,8 @@ fn determine_container_main_size(
                             item.target_size.set_main(constants.dir, size);
                             size
                         })
-                        .sum::<f32>();
+                        // VIPER-PATCH(layout-float-alias): the alias.
+                        .sum::<LayoutFloat>();
 
                     let gap_sum = sum_axis_gaps(constants.gap.main(constants.dir), line.items.len());
                     main_size = f32_max(main_size, item_main_size_sum + gap_sum)
@@ -1844,8 +1899,9 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
     //    flex shrink factor.
 
     let total_hypothetical_outer_main_size =
-        line.items.iter().map(|child| child.hypothetical_outer_size.main(constants.dir)).sum::<f32>();
-    let used_flex_factor: f32 = total_main_axis_gap + total_hypothetical_outer_main_size;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        line.items.iter().map(|child| child.hypothetical_outer_size.main(constants.dir)).sum::<LayoutFloat>();
+    let used_flex_factor: LayoutFloat = total_main_axis_gap + total_hypothetical_outer_main_size;
     let growing = used_flex_factor < constants.node_inner_size.main(constants.dir).unwrap_or(0.0);
     let shrinking = used_flex_factor > constants.node_inner_size.main(constants.dir).unwrap_or(0.0);
     let exactly_sized = !growing & !shrinking;
@@ -1880,7 +1936,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
     //    and subtract this from the flex container’s inner main size. For frozen items,
     //    use their outer target main size; for other items, use their outer flex base size.
 
-    let used_space: f32 = total_main_axis_gap
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let used_space: LayoutFloat = total_main_axis_gap
         + line
             .items
             .iter()
@@ -1891,7 +1948,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
                     child.flex_basis + child.margin.main_axis_sum(constants.dir)
                 }
             })
-            .sum::<f32>();
+            // VIPER-PATCH(layout-float-alias): the alias.
+            .sum::<LayoutFloat>();
 
     let initial_free_space = constants.node_inner_size.main(constants.dir).maybe_sub(used_space).unwrap_or(0.0);
 
@@ -1911,7 +1969,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
         //    value is less than the magnitude of the remaining free space, use this
         //    as the remaining free space.
 
-        let used_space: f32 = total_main_axis_gap
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let used_space: LayoutFloat = total_main_axis_gap
             + line
                 .items
                 .iter()
@@ -1922,7 +1981,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
                         child.flex_basis + child.margin.main_axis_sum(constants.dir)
                     }
                 })
-                .sum::<f32>();
+                // VIPER-PATCH(layout-float-alias): the alias.
+                .sum::<LayoutFloat>();
 
         let mut unfrozen: Vec<&mut FlexItem> = line.items.iter_mut().filter(|child| !child.frozen).collect();
 
@@ -1969,7 +2029,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
                         .set_main(constants.dir, child.flex_basis + free_space * (child.flex_grow / sum_flex_grow));
                 }
             } else if shrinking && sum_flex_shrink > 0.0 {
-                let sum_scaled_shrink_factor: f32 =
+                // VIPER-PATCH(layout-float-alias): the alias.
+                let sum_scaled_shrink_factor: LayoutFloat =
                     unfrozen.iter().map(|child| child.inner_flex_basis * child.flex_shrink).sum();
 
                 if sum_scaled_shrink_factor > 0.0 {
@@ -1989,8 +2050,9 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
         //    item’s target main size was made smaller by this, it’s a max violation.
         //    If the item’s target main size was made larger by this, it’s a min violation.
 
-        let total_violation = unfrozen.iter_mut().fold(0.0, |acc, child| -> f32 {
-            let resolved_min_main: Option<f32> = child.resolved_minimum_main_size.into();
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let total_violation = unfrozen.iter_mut().fold(0.0, |acc, child| -> LayoutFloat {
+            let resolved_min_main: Option<LayoutFloat> = child.resolved_minimum_main_size.into();
             let max_main = child.max_size.main(constants.dir);
             let clamped = child.target_size.main(constants.dir).maybe_clamp(resolved_min_main, max_main).max(0.0);
             child.violation = clamped - child.target_size.main(constants.dir);
@@ -2134,7 +2196,8 @@ fn determine_hypothetical_cross_size(
 /// VIPER-PATCH(flex-aspect-ratio): the cross size of an item whose cross size is transferred from its main size
 /// through its aspect ratio, from its used (target) main size, in the box that `box-sizing` names; the body is
 /// upstream commit eb2c9e1a's, moved out of `determine_used_cross_size`.
-fn transferred_cross_size(child: &FlexItem, dir: FlexDirection) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn transferred_cross_size(child: &FlexItem, dir: FlexDirection) -> LayoutFloat {
     // If the cross size is transferred from the main size through the aspect ratio
     // then it is re-derived from the used (target) main size rather than from the
     // flex base size before flexing.
@@ -2157,7 +2220,8 @@ fn transferred_cross_size(child: &FlexItem, dir: FlexDirection) -> f32 {
 #[inline]
 fn calculate_children_base_lines(
     tree: &mut impl LayoutFlexboxContainer,
-    node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    node_size: Size<Option<LayoutFloat>>,
     available_space: Size<AvailableSpace>,
     flex_lines: &mut [FlexLine],
     constants: &AlgoConstants,
@@ -2263,7 +2327,8 @@ fn calculate_children_base_lines(
 ///
 /// - [**Calculate the cross size of each flex line**](https://www.w3.org/TR/css-flexbox-1/#algo-cross-line).
 #[inline]
-fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<LayoutFloat>>, constants: &AlgoConstants) {
     // If the flex container is single-line and has a definite cross size,
     // the cross size of the flex line is the flex container’s inner cross size.
     if !constants.is_wrap && node_size.cross(constants.dir).is_some() {
@@ -2291,7 +2356,9 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
         //    3. The used cross-size of the flex line is the largest of the numbers found in the
         //       previous two steps and zero.
         for line in flex_lines.iter_mut() {
-            let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let max_baseline: LayoutFloat =
+                line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
             // VIPER-PATCH(last-baseline): the last-baseline group is as high as its largest parts above and below
             // the shared baseline (the step 1 above, for last baselines; CSS Box Alignment 3 §9.3).
             let last_group =
@@ -2333,7 +2400,12 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
 ///   and the sum of the flex lines' cross sizes is less than the flex container’s inner cross size,
 ///   increase the cross size of each flex line by equal amounts such that the sum of their cross sizes exactly equals the flex container’s inner cross size.
 #[inline]
-fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn handle_align_content_stretch(
+    flex_lines: &mut [FlexLine],
+    node_size: Size<Option<LayoutFloat>>,
+    constants: &AlgoConstants,
+) {
     if constants.align_content == AlignContent::STRETCH {
         let cross_axis_padding_border = constants.content_box_inset.cross_axis_sum(constants.dir);
         let cross_min_size = constants.min_size.cross(constants.dir);
@@ -2347,11 +2419,14 @@ fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Opt
             .unwrap_or(0.0);
 
         let total_cross_axis_gap = sum_axis_gaps(constants.gap.cross(constants.dir), flex_lines.len());
-        let lines_total_cross: f32 = flex_lines.iter().map(|line| line.cross_size).sum::<f32>() + total_cross_axis_gap;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let lines_total_cross: LayoutFloat =
+            flex_lines.iter().map(|line| line.cross_size).sum::<LayoutFloat>() + total_cross_axis_gap;
 
         if lines_total_cross < container_min_inner_cross {
             let remaining = container_min_inner_cross - lines_total_cross;
-            let addition = remaining / flex_lines.len() as f32;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let addition = remaining / flex_lines.len() as LayoutFloat;
             flex_lines.iter_mut().for_each(|line| line.cross_size += addition);
         }
     }
@@ -2452,8 +2527,9 @@ fn determine_used_cross_size(
 fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
     for line in flex_lines {
         let total_main_axis_gap = sum_axis_gaps(constants.gap.main(constants.dir), line.items.len());
-        let used_space: f32 = total_main_axis_gap
-            + line.items.iter().map(|child| child.outer_target_size.main(constants.dir)).sum::<f32>();
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let used_space: LayoutFloat = total_main_axis_gap
+            + line.items.iter().map(|child| child.outer_target_size.main(constants.dir)).sum::<LayoutFloat>();
         let mut free_space = constants.inner_container_size.main(constants.dir) - used_space;
         let mut num_auto_margins = 0;
 
@@ -2467,7 +2543,8 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
         }
 
         if free_space > 0.0 && num_auto_margins > 0 {
-            let margin = free_space / num_auto_margins as f32;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let margin = free_space / num_auto_margins as LayoutFloat;
 
             for child in line.items.iter_mut() {
                 if child.margin_is_auto.main_start(constants.dir) {
@@ -2524,8 +2601,10 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
 fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
     for line in flex_lines {
         let line_cross_size = line.cross_size;
-        let max_baseline: f32 = line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
-        let max_baseline_to_bottom_distance: f32 = line
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let max_baseline: LayoutFloat =
+            line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
+        let max_baseline_to_bottom_distance: LayoutFloat = line
             .items
             .iter_mut()
             .filter(|child| child.participates_in_baseline_alignment(constants.dir))
@@ -2583,13 +2662,16 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
 #[inline]
 fn align_flex_items_along_cross_axis(
     child: &FlexItem,
-    free_space: f32,
-    max_baseline: f32,
-    max_baseline_to_bottom_distance: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    free_space: LayoutFloat,
+    max_baseline: LayoutFloat,
+    max_baseline_to_bottom_distance: LayoutFloat,
     // VIPER-PATCH(last-baseline): the line's last-baseline group.
-    last_group: Line<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    last_group: Line<LayoutFloat>,
     constants: &AlgoConstants,
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> LayoutFloat {
     let cross_axis_should_reverse = constants.is_column && matches!(constants.layout_direction, Direction::Rtl);
 
     // If align-self uses a "safe" overflow-position keyword and the item would overflow its
@@ -2693,11 +2775,14 @@ fn align_flex_items_along_cross_axis(
 #[must_use]
 fn determine_container_cross_size(
     flex_lines: &[FlexLine],
-    node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    node_size: Size<Option<LayoutFloat>>,
     constants: &mut AlgoConstants,
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> LayoutFloat {
     let total_cross_axis_gap = sum_axis_gaps(constants.gap.cross(constants.dir), flex_lines.len());
-    let total_line_cross_size: f32 = flex_lines.iter().map(|line| line.cross_size).sum::<f32>();
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let total_line_cross_size: LayoutFloat = flex_lines.iter().map(|line| line.cross_size).sum::<LayoutFloat>();
 
     let padding_border_sum = constants.content_box_inset.cross_axis_sum(constants.dir);
     let cross_scrollbar_gutter = constants.scrollbar_gutter.cross(constants.dir);
@@ -2722,7 +2807,12 @@ fn determine_container_cross_size(
 ///
 /// - [**Align all flex lines**](https://www.w3.org/TR/css-flexbox-1/#algo-line-align) per `align-content`.
 #[inline]
-fn align_flex_lines_per_align_content(flex_lines: &mut [FlexLine], constants: &AlgoConstants, total_cross_size: f32) {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn align_flex_lines_per_align_content(
+    flex_lines: &mut [FlexLine],
+    constants: &AlgoConstants,
+    total_cross_size: LayoutFloat,
+) {
     let num_lines = flex_lines.len();
     let gap = constants.gap.cross(constants.dir);
     let total_cross_axis_gap = sum_axis_gaps(gap, num_lines);
@@ -2747,11 +2837,12 @@ fn align_flex_lines_per_align_content(flex_lines: &mut [FlexLine], constants: &A
 fn calculate_flex_item(
     tree: &mut impl LayoutFlexboxContainer,
     item: &mut FlexItem,
-    total_offset_main: &mut f32,
-    total_offset_cross: f32,
-    line_offset_cross: f32,
-    #[cfg(feature = "content_size")] total_overflow_rect: &mut Rect<f32>,
-    #[cfg(feature = "content_size")] border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    total_offset_main: &mut LayoutFloat,
+    total_offset_cross: LayoutFloat,
+    line_offset_cross: LayoutFloat,
+    #[cfg(feature = "content_size")] total_overflow_rect: &mut Rect<LayoutFloat>,
+    #[cfg(feature = "content_size")] border: Rect<LayoutFloat>,
     constants: &AlgoConstants,
 ) {
     let container_size = constants.container_size;
@@ -2805,7 +2896,8 @@ fn calculate_flex_item(
         // position, but are additionally clamped to their border box.
         // See https://github.com/w3c/csswg-drafts/issues/7660
         // VIPER-PATCH(last-baseline): the item's last baseline too.
-        let inner_baseline = |baseline: Option<f32>| {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let inner_baseline = |baseline: Option<LayoutFloat>| {
             let baseline = baseline.unwrap_or(size.height);
             if item.overflow.y.is_scroll_container() {
                 baseline.min(size.height).max(0.0)
@@ -2893,9 +2985,10 @@ fn calculate_flex_item(
 fn calculate_layout_line(
     tree: &mut impl LayoutFlexboxContainer,
     line: &mut FlexLine,
-    total_offset_cross: &mut f32,
-    #[cfg(feature = "content_size")] overflow_rect: &mut Rect<f32>,
-    #[cfg(feature = "content_size")] border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    total_offset_cross: &mut LayoutFloat,
+    #[cfg(feature = "content_size")] overflow_rect: &mut Rect<LayoutFloat>,
+    #[cfg(feature = "content_size")] border: Rect<LayoutFloat>,
     constants: &AlgoConstants,
 ) {
     let container_size = constants.container_size;
@@ -2957,7 +3050,8 @@ fn final_layout_pass(
     tree: &mut impl LayoutFlexboxContainer,
     flex_lines: &mut [FlexLine],
     constants: &AlgoConstants,
-) -> Rect<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> Rect<LayoutFloat> {
     let mut total_offset_cross = if constants.is_column && constants.layout_direction.is_rtl() {
         constants.container_size.width - constants.content_box_inset.cross_end(constants.dir)
     } else {
@@ -3178,14 +3272,16 @@ fn collect_oof_candidates(
 ///   - The size of each gap
 ///   - The number of items (children or flex-lines) between which there are gaps
 #[inline(always)]
-fn sum_axis_gaps(gap: f32, num_items: usize) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn sum_axis_gaps(gap: LayoutFloat, num_items: usize) -> LayoutFloat {
     // Gaps only exist between items, so...
     if num_items <= 1 {
         // ...if there are less than 2 items then there are no gaps
         0.0
     } else {
         // ...otherwise there are (num_items - 1) gaps
-        gap * (num_items - 1) as f32
+        // VIPER-PATCH(layout-float-alias): the alias.
+        gap * (num_items - 1) as LayoutFloat
     }
 }
 
@@ -3226,14 +3322,17 @@ fn sum_axis_gaps(gap: f32, num_items: usize) -> f32 {
 #[cfg(feature = "flexbox_balance")]
 mod balance {
     use crate::util::sys::{new_vec_with_capacity, Vec};
+    // VIPER-PATCH(layout-float-alias): the alias.
+    use crate::LayoutFloat;
 
     /// Score assigned to divisions that violate the line size constraint
     const INFEASIBLE: f64 = f64::INFINITY;
 
     /// Convert an item size in pixels to an `f64`, flooring negative sizes at zero. (An
     /// infinite size is clamped to the largest finite `f32` so that sums stay meaningful.)
-    fn to_size(value: f32) -> f64 {
-        (value as f64).clamp(0.0, f32::MAX as f64)
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn to_size(value: LayoutFloat) -> f64 {
+        (value as f64).clamp(0.0, LayoutFloat::MAX as f64)
     }
 
     /// Line sizing shared by the scoring and readback phases
@@ -3441,9 +3540,10 @@ mod balance {
     /// Runs in `O(line_count * item_count * log(item_count))` time using
     /// `O(line_count * item_count)` transient memory.
     pub(super) fn balanced_line_item_counts(
-        item_sizes: impl ExactSizeIterator<Item = f32>,
-        line_limit: f32,
-        gap_between_items: f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        item_sizes: impl ExactSizeIterator<Item = LayoutFloat>,
+        line_limit: LayoutFloat,
+        gap_between_items: LayoutFloat,
         min_line_count: usize,
     ) -> Vec<usize> {
         let item_count = item_sizes.len();

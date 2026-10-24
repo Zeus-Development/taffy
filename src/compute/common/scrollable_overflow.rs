@@ -2,6 +2,8 @@
 use crate::geometry::{Point, Rect, Size};
 use crate::style::{Contain, Overflow};
 use crate::util::sys::{f32_max, f32_min};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 #[inline(always)]
 /// Determine the rectangle that a given node contributes to its parent's scrollable overflow
@@ -23,13 +25,15 @@ use crate::util::sys::{f32_max, f32_min};
 /// A box whose containment contains its scrollable overflow (layout or paint containment)
 /// contributes only its border box, regardless of its overflow style.
 pub(crate) fn compute_scrollable_overflow_contribution(
-    location: Point<f32>,
-    size: Size<f32>,
-    scrollable_overflow_rect: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    location: Point<LayoutFloat>,
+    size: Size<LayoutFloat>,
+    scrollable_overflow_rect: Rect<LayoutFloat>,
     overflow: Point<Overflow>,
     contain: Contain,
     parent_is_scroll_container: bool,
-) -> Rect<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> Rect<LayoutFloat> {
     let is_scroll_container = overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
     let overflow_is_contained = contain.contains_scrollable_overflow();
     let propagates = Point {

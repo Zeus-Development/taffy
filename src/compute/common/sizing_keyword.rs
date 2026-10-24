@@ -5,13 +5,16 @@ use crate::style::AvailableSpace;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, NodeId, SizingMode};
 use crate::util::sys::f32_max;
 use crate::{CompactLength, Dimension};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// How a sizing keyword resolves to a used size
 pub(crate) enum SizingKeywordResolution {
     /// The size is the result of measuring the item under the given available space constraint
     Measure(AvailableSpace),
     /// The size resolves to an exact value without measuring the item
-    Exact(f32),
+    // VIPER-PATCH(layout-float-alias): the alias.
+    Exact(LayoutFloat),
 }
 
 /// Resolve an item's size style in one axis if it is a sizing keyword (`min-content`,
@@ -27,9 +30,10 @@ pub(crate) enum SizingKeywordResolution {
 #[inline]
 pub(crate) fn resolve_sizing_keyword(
     style: Dimension,
-    stretch_size: Option<f32>,
-    percent_resolution_basis: Option<f32>,
-    calc_resolver: impl Fn(*const (), f32) -> f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    stretch_size: Option<LayoutFloat>,
+    percent_resolution_basis: Option<LayoutFloat>,
+    calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
 ) -> Option<SizingKeywordResolution> {
     #[cfg(not(feature = "calc"))]
     let _ = &calc_resolver;
@@ -65,11 +69,13 @@ pub(crate) fn resolve_sizing_keyword(
 pub(crate) fn resolve_absolute_sizing_keywords(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,
-    known_dimensions: &mut Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    known_dimensions: &mut Size<Option<LayoutFloat>>,
     size_style: Size<Dimension>,
-    area_size: Size<f32>,
-    inset: Rect<Option<f32>>,
-    margin: Rect<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    area_size: Size<LayoutFloat>,
+    inset: Rect<Option<LayoutFloat>>,
+    margin: Rect<Option<LayoutFloat>>,
     sizing_mode: SizingMode,
 ) {
     let stretch_size = Size {

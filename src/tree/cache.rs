@@ -6,6 +6,8 @@ use crate::geometry::Size;
 use crate::style::AvailableSpace;
 use crate::tree::{CollapsibleMarginSet, LayoutInput, LayoutOutput, RunMode, SizingMode};
 use crate::RequestedAxis;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The number of cache entries for each node in the tree
 const CACHE_SIZE: usize = 9;
@@ -37,7 +39,8 @@ const X_AXIS_VALUE_MASK: u64 = (u32::MAX as u64) << 32;
 
 /// Pack `Option<f32>` into `u32`
 #[inline(always)]
-fn option_cache_key(input: Option<f32>) -> u32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn option_cache_key(input: Option<LayoutFloat>) -> u32 {
     match input {
         Some(value) => value.to_bits(),
         None => INFINITY_BITS,
@@ -46,7 +49,8 @@ fn option_cache_key(input: Option<f32>) -> u32 {
 
 /// Pack `Size<Option<f32>>` into `u64`
 #[inline(always)]
-fn size_option_cache_key(input: Size<Option<f32>>) -> u64 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn size_option_cache_key(input: Size<Option<LayoutFloat>>) -> u64 {
     (option_cache_key(input.width) as u64) << 32 | option_cache_key(input.height) as u64
 }
 
@@ -70,14 +74,16 @@ fn size_available_space_cache_key(input: Size<AvailableSpace>) -> u64 {
 /// Encodes combination of a `known_dimension` (Option<f32>) and `AvailableSpace` in
 /// a single dimension into a cache key in a single dimension.
 #[inline(always)]
-fn mixed_cache_key(kd: Option<f32>, avs: AvailableSpace) -> u32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn mixed_cache_key(kd: Option<LayoutFloat>, avs: AvailableSpace) -> u32 {
     kd.map(|kd| kd.to_bits()).unwrap_or_else(|| available_space_cache_key(avs))
 }
 
 /// Encodes combination of a `known_dimension` (Option<f32>) and `AvailableSpace` in
 /// two dimensions into a cache key in a single dimension.
 #[inline(always)]
-fn size_mixed_cache_key(kd: Size<Option<f32>>, avs: Size<AvailableSpace>) -> u64 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn size_mixed_cache_key(kd: Size<Option<LayoutFloat>>, avs: Size<AvailableSpace>) -> u64 {
     (mixed_cache_key(kd.width, avs.width) as u64) << 32 | mixed_cache_key(kd.height, avs.height) as u64
 }
 
@@ -215,7 +221,8 @@ pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
     /// The cache entries for the node's preliminary size measurements
-    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    measure_entries: [Option<CacheEntry<Size<LayoutFloat>>>; CACHE_SIZE],
     /// Tracks which measure entries have been used since the eviction cursor last passed them
     recently_used_entries: u16,
     /// The next measure entry to consider replacing
@@ -238,7 +245,8 @@ impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
         /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<LayoutFloat>>> = None;
         Self {
             final_layout_entry: None,
             measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
@@ -345,7 +353,8 @@ impl Cache {
         self.is_empty = true;
         self.final_layout_entry = None;
         /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<LayoutFloat>>> = None;
         self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
         self.recently_used_entries = 0;
         self.next_measure_entry = 0;

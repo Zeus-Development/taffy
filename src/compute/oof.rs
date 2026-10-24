@@ -22,6 +22,8 @@ use crate::{AxisStaticEdge, BoxSizing, Direction};
 #[cfg(feature = "content_size")]
 use super::common::scrollable_overflow::compute_scrollable_overflow_contribution;
 use super::common::sizing_keyword::resolve_absolute_sizing_keywords;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Resolve the final static offset of an out-of-flow box from its static position, given the
 /// box's final size and resolved margins.
@@ -34,9 +36,10 @@ use super::common::sizing_keyword::resolve_absolute_sizing_keywords;
 /// has bubbled to its containing block).
 pub fn resolve_static_offset(
     static_position: Point<AxisStaticPosition>,
-    final_size: Size<f32>,
-    resolved_margin: Rect<f32>,
-) -> Point<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    final_size: Size<LayoutFloat>,
+    resolved_margin: Rect<LayoutFloat>,
+) -> Point<LayoutFloat> {
     Point {
         x: resolve_static_offset_axis(
             static_position.x,
@@ -52,7 +55,8 @@ pub fn resolve_static_offset(
 }
 
 /// Single-axis version of [`resolve_static_offset`]
-fn resolve_static_offset_axis(sp: AxisStaticPosition, size: f32, margin: Line<f32>) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn resolve_static_offset_axis(sp: AxisStaticPosition, size: LayoutFloat, margin: Line<LayoutFloat>) -> LayoutFloat {
     let margin_box_size = size + margin.start + margin.end;
     let overflows = matches!(sp.align.safety, AlignmentSafety::Safe) && margin_box_size > sp.area.end - sp.area.start;
     let keyword = if overflows { sp.align.fallback } else { sp.align.keyword };
@@ -60,7 +64,8 @@ fn resolve_static_offset_axis(sp: AxisStaticPosition, size: f32, margin: Line<f3
 }
 
 /// Position a box of `size` within `container` so that it is aligned to the given physical edge
-fn align_in_line(container: Line<f32>, size: f32, edge: AxisStaticEdge) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn align_in_line(container: Line<LayoutFloat>, size: LayoutFloat, edge: AxisStaticEdge) -> LayoutFloat {
     match edge {
         AxisStaticEdge::Start => container.start,
         AxisStaticEdge::End => container.end - size,
@@ -141,11 +146,14 @@ impl OofAlignment {
 #[derive(Copy, Clone, Debug)]
 struct OofAxis {
     /// The size of the containing block in this axis
-    cb_size: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    cb_size: LayoutFloat,
     /// The box's resolved inset properties (`None` = `auto`)
-    inset: Line<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inset: Line<Option<LayoutFloat>>,
     /// The box's resolved margins (`None` = `auto`)
-    margin: Line<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    margin: Line<Option<LayoutFloat>>,
     /// The box's static position (relative to the containing block's inset-resolution area)
     static_position: AxisStaticPosition,
     /// The box's self-alignment in this axis
@@ -182,7 +190,8 @@ impl OofAxis {
 
     /// The inset-modified containing block (IMCB) in this axis
     /// <https://www.w3.org/TR/css-position-3/#resolving-insets>
-    fn inset_modified_containing_block(&self) -> Line<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn inset_modified_containing_block(&self) -> Line<LayoutFloat> {
         let (mut imcb, weaker_edge) = match (self.inset.start, self.inset.end) {
             (Some(start), Some(end)) => (Line { start, end: self.cb_size - end }, self.end_edge()),
             // A lone auto inset resolves to zero, and is the weaker inset
@@ -224,14 +233,16 @@ impl OofAxis {
     }
 
     /// The size of the IMCB in this axis: the space available to the box's margin box
-    fn inset_modified_containing_block_size(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn inset_modified_containing_block_size(&self) -> LayoutFloat {
         let imcb = self.inset_modified_containing_block();
         imcb.end - imcb.start
     }
 
     /// The stretch-fit size of the box's border box: the IMCB minus the non-auto margins (auto
     /// margins are treated as zero) <https://www.w3.org/TR/css-position-3/#abspos-auto-size>
-    fn stretch_fit_size(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn stretch_fit_size(&self) -> LayoutFloat {
         let non_auto_margin_sum = self.margin.start.unwrap_or(0.0) + self.margin.end.unwrap_or(0.0);
         f32_max(self.inset_modified_containing_block_size() - non_auto_margin_sum, 0.0)
     }
@@ -250,7 +261,8 @@ impl OofAxis {
 
     /// Resolve the box's auto margins given its final size
     /// <https://www.w3.org/TR/css-position-3/#abspos-margins>
-    fn resolve_margins(&self, size: f32) -> Line<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn resolve_margins(&self, size: LayoutFloat) -> Line<LayoutFloat> {
         let both_insets = self.inset.start.is_some() && self.inset.end.is_some();
         let imcb = self.inset_modified_containing_block();
         let free_space = imcb.end - imcb.start - size;
@@ -277,7 +289,8 @@ impl OofAxis {
 
     /// Compute the physical start of the box's border box given its final size and margins
     /// <https://www.w3.org/TR/css-position-3/#abspos-alignment>
-    fn position(&self, size: f32, margin: Line<f32>) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn position(&self, size: LayoutFloat, margin: Line<LayoutFloat>) -> LayoutFloat {
         let imcb = self.inset_modified_containing_block();
         match (self.inset.start, self.inset.end) {
             // Both insets are auto: static alignment, with safe overflow relative to the IMCB
@@ -322,9 +335,11 @@ impl OofAxis {
                             let mut limit = Line { start: imcb.start.min(0.0), end: f32_max(imcb.end, self.cb_size) };
                             if self.is_scroll_axis {
                                 if self.reversed {
-                                    limit.start = f32::NEG_INFINITY;
+                                    // VIPER-PATCH(layout-float-alias): the alias.
+                                    limit.start = LayoutFloat::NEG_INFINITY;
                                 } else {
-                                    limit.end = f32::INFINITY;
+                                    // VIPER-PATCH(layout-float-alias): the alias.
+                                    limit.end = LayoutFloat::INFINITY;
                                 }
                             }
                             if margin_box_size <= limit.end - limit.start {
@@ -389,7 +404,8 @@ pub struct OofLayoutResult {
     pub unclaimed: OofCandidates,
     /// Scrollable overflow contributed by the claimed candidates, relative to the positioning
     /// area's origin.
-    pub scrollable_overflow_rect: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub scrollable_overflow_rect: Rect<LayoutFloat>,
 }
 
 /// Lay out out-of-flow candidates against an explicit positioning area.
@@ -460,8 +476,9 @@ pub(crate) struct OofBoxLayout {
 pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     tree: &mut Tree,
     candidate: OofCandidate,
-    area_size: Size<f32>,
-    area_offset: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    area_size: Size<LayoutFloat>,
+    area_offset: Point<LayoutFloat>,
     direction: Direction,
     container_overflow: Point<Overflow>,
     #[cfg(feature = "grid")] grid_owner: Option<NodeId>,
@@ -754,14 +771,16 @@ pub(crate) fn perform_oof_layout(
     tree: &mut impl LayoutContainingBlock,
     node_id: NodeId,
     candidates: &[OofCandidate],
-    area_size: Size<f32>,
-    area_offset: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    area_size: Size<LayoutFloat>,
+    area_offset: Point<LayoutFloat>,
     direction: Direction,
     claims: ContainingBlockClaims,
     container_overflow: Point<Overflow>,
     hoisted: &mut Vec<NodeId>,
     unclaimed: &mut OofCandidates,
-) -> Rect<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> Rect<LayoutFloat> {
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let mut absolute_overflow_rect = Rect::ZERO;
 

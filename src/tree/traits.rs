@@ -140,6 +140,8 @@ use crate::{BlockContainerStyle, BlockContext, BlockItemStyle};
 
 #[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Taffy's abstraction for downward tree traversal.
 ///
@@ -190,7 +192,8 @@ pub trait LayoutPartialTree: TraversePartialTree {
 
     /// Resolve calc value
     #[inline(always)]
-    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn resolve_calc_value(&self, val: *const (), basis: LayoutFloat) -> LayoutFloat {
         let _ = val;
         let _ = basis;
         0.0
@@ -397,13 +400,15 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     fn measure_child_size(
         &mut self,
         node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        parent_size: Size<Option<f32>>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        known_dimensions: Size<Option<LayoutFloat>>,
+        parent_size: Size<Option<LayoutFloat>>,
         available_space: Size<AvailableSpace>,
         sizing_mode: SizingMode,
         axis: AbsoluteAxis,
         vertical_margins_are_collapsible: Line<bool>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> LayoutFloat {
         self.compute_child_layout(
             node_id,
             LayoutInput {
@@ -427,12 +432,14 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     fn measure_child_size_both(
         &mut self,
         node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        parent_size: Size<Option<f32>>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        known_dimensions: Size<Option<LayoutFloat>>,
+        parent_size: Size<Option<LayoutFloat>>,
         available_space: Size<AvailableSpace>,
         sizing_mode: SizingMode,
         vertical_margins_are_collapsible: Line<bool>,
-    ) -> Size<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Size<LayoutFloat> {
         self.compute_child_layout(
             node_id,
             LayoutInput {
@@ -454,8 +461,9 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     fn perform_child_layout(
         &mut self,
         node_id: NodeId,
-        known_dimensions: Size<Option<f32>>,
-        parent_size: Size<Option<f32>>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        known_dimensions: Size<Option<LayoutFloat>>,
+        parent_size: Size<Option<LayoutFloat>>,
         available_space: Size<AvailableSpace>,
         sizing_mode: SizingMode,
         vertical_margins_are_collapsible: Line<bool>,
@@ -478,14 +486,16 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
     /// Alias to `resolve_calc_value` with a shorter function name
     #[inline(always)]
     #[cfg(feature = "calc")]
-    fn calc(&self, val: *const (), basis: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn calc(&self, val: *const (), basis: LayoutFloat) -> LayoutFloat {
         self.resolve_calc_value(val, basis)
     }
 
     /// Alias to `resolve_calc_value` with a shorter function name
     #[inline(always)]
     #[cfg(not(feature = "calc"))]
-    fn calc(&self, _val: *const (), _basis: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn calc(&self, _val: *const (), _basis: LayoutFloat) -> LayoutFloat {
         0.0
     }
 }

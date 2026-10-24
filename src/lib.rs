@@ -97,6 +97,15 @@ mod readme_doctest {
     #![doc = include_str!("../README.md")]
 }
 
+// VIPER-PATCH(layout-float-alias): every layout number (a computed size, position, offset, baseline,
+// available space, track size, float segment, scrollable overflow or cache entry) has this one type, so
+// the precision of layout arithmetic can change in one place. Style values (`CompactLength`'s stored
+// value, the `Dimension` and `LengthPercentage` constructors, flex and aspect-ratio factors) stay `f32`.
+// Upstream uses `f32` throughout. Mechanical: the alias is `f32`, so no value changes.
+/// The number type of computed layout values: sizes, positions, offsets, baselines and the
+/// available space. Style values stay `f32`.
+pub type LayoutFloat = f32;
+
 #[cfg(feature = "flexbox")]
 #[doc(inline)]
 pub use crate::compute::compute_flexbox_layout;

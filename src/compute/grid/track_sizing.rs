@@ -8,6 +8,8 @@ use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
 use crate::util::sys::{f32_max, f32_min, Vec};
 use crate::util::{FrontBackVecBuilder, MaybeMath, ResolveOrZero};
 use crate::CompactLength;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Takes an axis, and a list of grid items sorted firstly by whether they cross a flex track
 /// in the specified axis (items that don't cross a flex track first) and then by the number
@@ -72,7 +74,8 @@ impl ItemBatcher {
 struct IntrinsicSizeMeasurer<'tree, 'oat, Tree, EstimateFunction>
 where
     Tree: LayoutPartialTree,
-    EstimateFunction: Fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    EstimateFunction: Fn(&GridTrack, Option<LayoutFloat>, &Tree) -> Option<LayoutFloat>,
 {
     /// The layout tree
     tree: &'tree mut Tree,
@@ -84,20 +87,23 @@ where
     /// The axis we are currently sizing
     axis: AbstractAxis,
     /// The available grid space
-    inner_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
 }
 
 impl<Tree, EstimateFunction> IntrinsicSizeMeasurer<'_, '_, Tree, EstimateFunction>
 where
     Tree: LayoutPartialTree,
-    EstimateFunction: Fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    EstimateFunction: Fn(&GridTrack, Option<LayoutFloat>, &Tree) -> Option<LayoutFloat>,
 {
     /// Compute the available_space to be passed to the child sizing functions
     /// These are estimates based on either the max track sizing function or the provisional base size in the opposite
     /// axis to the one currently being sized.
     /// https://www.w3.org/TR/css-grid-1/#algo-overview
     #[inline(always)]
-    fn grid_area_size(&self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> Size<Option<f32>> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn grid_area_size(&self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> Size<Option<LayoutFloat>> {
         item.grid_area_size_cached(
             self.axis,
             axis_tracks,
@@ -111,19 +117,26 @@ where
     /// Compute the item's resolved margins for size contributions. Horizontal percentage margins always resolve
     /// to zero if the container size is indefinite as otherwise this would introduce a cyclic dependency.
     #[inline(always)]
-    fn margins_axis_sums_with_baseline_shims(&self, item: &GridItem, percentage_basis: Option<f32>) -> Size<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn margins_axis_sums_with_baseline_shims(
+        &self,
+        item: &GridItem,
+        percentage_basis: Option<LayoutFloat>,
+    ) -> Size<LayoutFloat> {
         item.margins_axis_sums_with_baseline_shims(percentage_basis, self.tree)
     }
 
     /// Simple pass-through function to `LayoutPartialTreeExt::calc`
     #[inline(always)]
-    fn calc(&self, val: *const (), basis: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn calc(&self, val: *const (), basis: LayoutFloat) -> LayoutFloat {
         self.tree.calc(val, basis)
     }
 
     /// Retrieve the item's min content contribution from the cache or compute it using the provided parameters
     #[inline(always)]
-    fn min_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn min_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> LayoutFloat {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
@@ -133,7 +146,8 @@ where
 
     /// Retrieve the item's max content contribution from the cache or compute it using the provided parameters
     #[inline(always)]
-    fn max_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn max_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> LayoutFloat {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
@@ -149,7 +163,8 @@ where
     ///
     /// Because the minimum contribution often depends on the size of the item’s content, it is considered a type of intrinsic size contribution.
     #[inline(always)]
-    fn minimum_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn minimum_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> LayoutFloat {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
@@ -165,10 +180,12 @@ where
 #[inline(always)]
 pub(super) fn compute_alignment_gutter_adjustment(
     alignment: AlignContent,
-    axis_inner_node_size: Option<f32>,
-    get_track_size_estimate: impl Fn(&GridTrack, Option<f32>) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    axis_inner_node_size: Option<LayoutFloat>,
+    get_track_size_estimate: impl Fn(&GridTrack, Option<LayoutFloat>) -> Option<LayoutFloat>,
     tracks: &[GridTrack],
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> LayoutFloat {
     if tracks.len() <= 1 {
         return 0.0;
     }
@@ -210,14 +227,16 @@ pub(super) fn compute_alignment_gutter_adjustment(
         let free_space = tracks
             .iter()
             .map(|track| get_track_size_estimate(track, Some(axis_inner_node_size)))
-            .sum::<Option<f32>>()
+            // VIPER-PATCH(layout-float-alias): the alias.
+            .sum::<Option<LayoutFloat>>()
             .map(|track_size_sum| f32_max(0.0, axis_inner_node_size - track_size_sum))
             .unwrap_or(0.0);
 
         let weighted_track_count =
             (((tracks.len() - 3) / 2) * inner_gutter_weight as usize) + (2 * outer_gutter_weight as usize);
 
-        return (free_space / weighted_track_count as f32) * inner_gutter_weight as f32;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        return (free_space / weighted_track_count as LayoutFloat) * inner_gutter_weight as LayoutFloat;
     }
 
     0.0
@@ -257,16 +276,19 @@ pub(super) fn determine_if_item_crosses_flexible_or_intrinsic_tracks(
 pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
     tree: &mut Tree,
     axis: AbstractAxis,
-    axis_min_size: Option<f32>,
-    axis_max_size: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    axis_min_size: Option<LayoutFloat>,
+    axis_max_size: Option<LayoutFloat>,
     axis_alignment: AlignContent,
     other_axis_alignment: AlignContent,
     available_grid_space: Size<AvailableSpace>,
-    inner_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
     axis_tracks: &mut [GridTrack],
     other_axis_tracks: &mut [GridTrack],
     items: &mut [GridItem],
-    get_track_size_estimate: fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    get_track_size_estimate: fn(&GridTrack, Option<LayoutFloat>, &Tree) -> Option<LayoutFloat>,
     has_baseline_aligned_item: bool,
 ) {
     // 11.4 Initialise Track sizes
@@ -396,7 +418,8 @@ fn flush_planned_base_size_increases(tracks: &mut [GridTrack]) {
 fn flush_planned_growth_limit_increases(tracks: &mut [GridTrack], set_infinitely_growable: bool) {
     for track in tracks {
         if track.growth_limit_planned_increase > 0.0 {
-            track.growth_limit = if track.growth_limit == f32::INFINITY {
+            // VIPER-PATCH(layout-float-alias): the alias.
+            track.growth_limit = if track.growth_limit == LayoutFloat::INFINITY {
                 track.base_size + track.growth_limit_planned_increase
             } else {
                 track.growth_limit + track.growth_limit_planned_increase
@@ -415,7 +438,8 @@ fn flush_planned_growth_limit_increases(tracks: &mut [GridTrack], set_infinitely
 fn initialize_track_sizes(
     tree: &impl LayoutPartialTree,
     axis_tracks: &mut [GridTrack],
-    axis_inner_node_size: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    axis_inner_node_size: Option<LayoutFloat>,
 ) {
     for track in axis_tracks.iter_mut() {
         // For each track, if the track’s min track sizing function is:
@@ -439,7 +463,8 @@ fn initialize_track_sizes(
         track.growth_limit = track
             .max_track_sizing_function
             .definite_value(axis_inner_node_size, |val, basis| tree.calc(val, basis))
-            .unwrap_or(f32::INFINITY);
+            // VIPER-PATCH(layout-float-alias): the alias.
+            .unwrap_or(LayoutFloat::INFINITY);
 
         // In all cases, if the growth limit is less than the base size, increase the growth limit to match the base size.
         if track.growth_limit < track.base_size {
@@ -453,7 +478,8 @@ fn resolve_item_baselines(
     tree: &mut impl LayoutPartialTree,
     axis: AbstractAxis,
     items: &mut [GridItem],
-    inner_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
 ) {
     // VIPER-PATCH(last-baseline): first-baseline items, then last-baseline items.
     resolve_baseline_group_shims(tree, axis, items, inner_node_size, false);
@@ -470,7 +496,8 @@ fn resolve_baseline_group_shims(
     tree: &mut impl LayoutPartialTree,
     axis: AbstractAxis,
     items: &mut [GridItem],
-    inner_node_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
     last: bool,
 ) {
     let participates = |item: &GridItem| {
@@ -612,8 +639,9 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
     other_axis_tracks: &[GridTrack],
     items: &mut [GridItem],
     axis_available_grid_space: AvailableSpace,
-    inner_node_size: Size<Option<f32>>,
-    get_track_size_estimate: impl Fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
+    get_track_size_estimate: impl Fn(&GridTrack, Option<LayoutFloat>, &Tree) -> Option<LayoutFloat>,
 ) {
     // Step 1. Shim baseline-aligned items so their intrinsic size contributions reflect their baseline alignment.
 
@@ -756,7 +784,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
 
             for track in axis_tracks.iter_mut() {
                 if track.growth_limit_planned_increase > 0.0 {
-                    track.growth_limit = if track.growth_limit == f32::INFINITY {
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    track.growth_limit = if track.growth_limit == LayoutFloat::INFINITY {
                         track.growth_limit_planned_increase
                     } else {
                         f32_max(track.growth_limit, track.growth_limit_planned_increase)
@@ -805,7 +834,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                     // `grid-template-rows: 0fr` to `1fr` collapse animation pattern relies on.
                     if is_flex {
                         let spanned_tracks = &axis_tracks[item.track_range_excluding_lines(axis)];
-                        let inflexible_sizes: f32 = spanned_tracks
+                        // VIPER-PATCH(layout-float-alias): the alias.
+                        let inflexible_sizes: LayoutFloat = spanned_tracks
                             .iter()
                             .filter(|track| !track.is_flexible())
                             .map(|track| track.base_size)
@@ -934,7 +964,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                 // the scaling already applied to the min-content contribution.
                 if is_flex {
                     let spanned_tracks = &axis_tracks[item.track_range_excluding_lines(axis)];
-                    let inflexible_sizes: f32 =
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    let inflexible_sizes: LayoutFloat =
                         spanned_tracks.iter().filter(|track| !track.is_flexible()).map(|track| track.base_size).sum();
                     let scale = f32_min(crossed_flex_factor_sum(spanned_tracks), 1.0);
                     space = inflexible_sizes + f32_max(space - inflexible_sizes, 0.0) * scale;
@@ -957,7 +988,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                             space,
                             tracks,
                             has_max_content_min_track_sizing_function,
-                            |_| f32::INFINITY,
+                            // VIPER-PATCH(layout-float-alias): the alias.
+                            |_| LayoutFloat::INFINITY,
                             IntrinsicContributionType::Maximum,
                         );
                     } else {
@@ -1057,7 +1089,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
     // NOTE: this step is super-important to ensure that the "Maximise Tracks" step doesn't affect flexible tracks
     axis_tracks
         .iter_mut()
-        .filter(|track| track.growth_limit == f32::INFINITY)
+        // VIPER-PATCH(layout-float-alias): the alias.
+        .filter(|track| track.growth_limit == LayoutFloat::INFINITY)
         .for_each(|track| track.growth_limit = track.base_size);
 }
 
@@ -1072,10 +1105,12 @@ fn crossed_flex_factor_sum(tracks: &[GridTrack]) -> f32 {
 #[inline(always)]
 fn distribute_item_space_to_base_size(
     is_flex: bool,
-    space: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    space: LayoutFloat,
     tracks: &mut [GridTrack],
     track_is_affected: impl Fn(&GridTrack) -> bool,
-    track_limit: impl Fn(&GridTrack) -> f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    track_limit: impl Fn(&GridTrack) -> LayoutFloat,
     intrinsic_contribution_type: IntrinsicContributionType,
 ) {
     if is_flex {
@@ -1122,11 +1157,13 @@ fn distribute_item_space_to_base_size(
     /// Inner function that doesn't account for differences due to distributing to flex items
     /// This difference is handled by the closure passed in above
     fn distribute_item_space_to_base_size_inner(
-        space: f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        space: LayoutFloat,
         tracks: &mut [GridTrack],
         track_is_affected: impl Fn(&GridTrack) -> bool,
-        track_distribution_proportion: impl Fn(&GridTrack) -> f32,
-        track_limit: impl Fn(&GridTrack) -> f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        track_distribution_proportion: impl Fn(&GridTrack) -> LayoutFloat,
+        track_limit: impl Fn(&GridTrack) -> LayoutFloat,
         intrinsic_contribution_type: IntrinsicContributionType,
     ) {
         // Skip this distribution if there is either
@@ -1141,8 +1178,9 @@ fn distribute_item_space_to_base_size(
         let get_base_size = |track: &GridTrack| track.base_size;
 
         // 1. Find the space to distribute
-        let track_sizes: f32 = tracks.iter().map(|track| track.base_size).sum();
-        let extra_space: f32 = f32_max(0.0, space - track_sizes);
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let track_sizes: LayoutFloat = tracks.iter().map(|track| track.base_size).sum();
+        let extra_space: LayoutFloat = f32_max(0.0, space - track_sizes);
 
         // 2. Distribute space up to limits:
         // Note: there are two exit conditions to this loop:
@@ -1151,7 +1189,8 @@ fn distribute_item_space_to_base_size(
 
         /// Define a small constant to avoid infinite loops due to rounding errors. Rather than stopping distributing
         /// extra space when it gets to exactly zero, we will stop when it falls below this amount
-        const THRESHOLD: f32 = 0.000001;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        const THRESHOLD: LayoutFloat = 0.000001;
 
         let extra_space = distribute_space_up_to_limits(
             extra_space,
@@ -1214,7 +1253,8 @@ fn distribute_item_space_to_base_size(
 /// This is simplified (and faster) version of the algorithm for growth limits
 /// https://www.w3.org/TR/css-grid-1/#extra-space
 fn distribute_item_space_to_growth_limit(
-    space: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    space: LayoutFloat,
     tracks: &mut [GridTrack],
     track_is_affected: impl Fn(&GridTrack) -> bool,
 ) {
@@ -1226,23 +1266,33 @@ fn distribute_item_space_to_growth_limit(
     }
 
     // 1. Find the space to distribute
-    let track_sizes: f32 = tracks
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let track_sizes: LayoutFloat = tracks
         .iter()
-        .map(|track| if track.growth_limit == f32::INFINITY { track.base_size } else { track.growth_limit })
+        // VIPER-PATCH(layout-float-alias): the alias.
+        .map(|track| if track.growth_limit == LayoutFloat::INFINITY { track.base_size } else { track.growth_limit })
         .sum();
-    let extra_space: f32 = f32_max(0.0, space - track_sizes);
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let extra_space: LayoutFloat = f32_max(0.0, space - track_sizes);
 
     // 2. Distribute space up to limits:
     // For growth limits the limit is the growth limit itself unless the track is marked infinitely growable (or its
     // growth limit is still infinite), in which case it is the track's fit-content() argument if it has one, or
     // infinity if it does not. As the affected size of a track that isn't growable is its growth limit, those
     // tracks won't receive any space in this step.
-    let growth_limit_or_base_size =
-        |track: &GridTrack| if track.growth_limit == f32::INFINITY { track.base_size } else { track.growth_limit };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let growth_limit_or_base_size = |track: &GridTrack| {
+        if track.growth_limit == LayoutFloat::INFINITY {
+            track.base_size
+        } else {
+            track.growth_limit
+        }
+    };
     let extra_space = distribute_space_up_to_limits(
         extra_space,
         tracks,
-        |track| track_is_affected(track) && (track.infinitely_growable || track.growth_limit == f32::INFINITY),
+        // VIPER-PATCH(layout-float-alias): the alias.
+        |track| track_is_affected(track) && (track.infinitely_growable || track.growth_limit == LayoutFloat::INFINITY),
         |_| 1.0,
         growth_limit_or_base_size,
         move |track| track.fit_content_limit(),
@@ -1278,9 +1328,11 @@ fn distribute_item_space_to_growth_limit(
 /// Distributes free space (if any) to tracks with FINITE growth limits, up to their limits.
 #[inline(always)]
 fn maximise_tracks(axis_tracks: &mut [GridTrack], axis_available_grid_space: AvailableSpace) {
-    let used_space: f32 = axis_tracks.iter().map(|track| track.base_size).sum();
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let used_space: LayoutFloat = axis_tracks.iter().map(|track| track.base_size).sum();
     let free_space = axis_available_grid_space.compute_free_space(used_space);
-    if free_space == f32::INFINITY {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    if free_space == LayoutFloat::INFINITY {
         axis_tracks.iter_mut().for_each(|track| track.base_size = track.growth_limit);
     } else if free_space > 0.0 {
         distribute_space_up_to_limits(
@@ -1308,11 +1360,13 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
     axis_tracks: &mut [GridTrack],
     other_axis_tracks: &[GridTrack],
     items: &mut [GridItem],
-    axis_min_size: Option<f32>,
-    axis_max_size: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    axis_min_size: Option<LayoutFloat>,
+    axis_max_size: Option<LayoutFloat>,
     axis_available_space_for_expansion: AvailableSpace,
-    inner_node_size: Size<Option<f32>>,
-    get_track_size_estimate: impl Fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inner_node_size: Size<Option<LayoutFloat>>,
+    get_track_size_estimate: impl Fn(&GridTrack, Option<LayoutFloat>, &Tree) -> Option<LayoutFloat>,
 ) {
     let mut item_sizer =
         IntrinsicSizeMeasurer { tree, other_axis_tracks, axis, inner_node_size, get_track_size_estimate };
@@ -1325,7 +1379,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
         //   The used flex fraction is the result of finding the size of an fr using all of the grid tracks and
         //   a space to fill of the available grid space.
         AvailableSpace::Definite(available_space) => {
-            let used_space: f32 = axis_tracks.iter().map(|track| track.base_size).sum();
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let used_space: LayoutFloat = axis_tracks.iter().map(|track| track.base_size).sum();
             let free_space = available_space - used_space;
             if free_space <= 0.0 {
                 0.0
@@ -1372,7 +1427,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
             // grid container’s max-width/height), then redo this step, treating the free space as definite and the available grid space as equal
             // to the grid container’s inner size when it’s sized to its min-width/height (max-width/height).
             // (Note: min_size takes precedence over max_size)
-            let hypothetical_grid_size: f32 = axis_tracks
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let hypothetical_grid_size: LayoutFloat = axis_tracks
                 .iter()
                 .map(|track| {
                     if track.max_track_sizing_function.is_fr() {
@@ -1384,7 +1440,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
                 })
                 .sum();
             let axis_min_size = axis_min_size.unwrap_or(0.0);
-            let axis_max_size = axis_max_size.unwrap_or(f32::INFINITY);
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let axis_max_size = axis_max_size.unwrap_or(LayoutFloat::INFINITY);
             if hypothetical_grid_size < axis_min_size {
                 find_size_of_fr(axis_tracks, axis_min_size)
             } else if hypothetical_grid_size > axis_max_size {
@@ -1415,12 +1472,15 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
         let track_flex_factor = track.max_track_sizing_function.0.value();
         let share = fr_size_in_units * track_flex_factor + leftover;
         // Rust's float-to-int cast truncates toward zero and saturates, as Blink's conversion does.
-        let expanded = (share + f32::EPSILON) as i32;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let expanded = (share + LayoutFloat::EPSILON) as i32;
         let saturated = expanded == i32::MAX || expanded == i32::MIN;
-        let expanded_size = expanded as f32 / LAYOUT_UNITS_PER_PX;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let expanded_size = expanded as LayoutFloat / LAYOUT_UNITS_PER_PX;
         if !saturated && expanded_size >= track.base_size {
             track.base_size = expanded_size;
-            leftover = f32_max(share - expanded as f32, 0.0);
+            // VIPER-PATCH(layout-float-alias): the alias.
+            leftover = f32_max(share - expanded as LayoutFloat, 0.0);
         }
     }
 }
@@ -1428,13 +1488,15 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
 /// VIPER-PATCH(grid-fr-carry): Chrome's layout unit, `LayoutUnit`'s `kFixedPointDenominator`
 /// (third_party/blink/renderer/platform/geometry/layout_unit.h): flexible tracks are sized in 1/64 px, as
 /// `GridTrackSizingAlgorithm::ExpandFlexibleTracks` sizes them.
-const LAYOUT_UNITS_PER_PX: f32 = 64.0;
+// VIPER-PATCH(layout-float-alias): the alias.
+const LAYOUT_UNITS_PER_PX: LayoutFloat = 64.0;
 
 /// 11.7.1. Find the Size of an fr
 /// This algorithm finds the largest size that an fr unit can be without exceeding the target size.
 /// It must be called with a set of grid tracks and some quantity of space to fill.
 #[inline(always)]
-fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: f32) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: LayoutFloat) -> LayoutFloat {
     // Handle the trivial case where there is no space to fill
     // Do not remove as otherwise the loop below will loop infinitely
     if space_to_fill == 0.0 {
@@ -1445,7 +1507,8 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: f32) -> f32 {
     // is less than the track’s base size, then we must restart this algorithm treating all such tracks as inflexible.
     // We therefore wrap the entire algorithm in a loop, with an hypothetical_fr_size of INFINITY such that the above
     // condition can never be true for the first iteration.
-    let mut hypothetical_fr_size = f32::INFINITY;
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let mut hypothetical_fr_size = LayoutFloat::INFINITY;
     let mut previous_iter_hypothetical_fr_size;
     // Every restart of the algorithm treats at least one more flexible track as inflexible, so a valid
     // hypothetical fr size is always found within `tracks.len() + 1` iterations. Non-finite values (which
@@ -1501,12 +1564,14 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: f32) -> f32 {
 #[inline(always)]
 fn stretch_auto_tracks(
     axis_tracks: &mut [GridTrack],
-    axis_min_size: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    axis_min_size: Option<LayoutFloat>,
     axis_available_space_for_expansion: AvailableSpace,
 ) {
     let num_auto_tracks = axis_tracks.iter().filter(|track| track.max_track_sizing_function.is_auto()).count();
     if num_auto_tracks > 0 {
-        let used_space: f32 = axis_tracks.iter().map(|track| track.base_size).sum();
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let used_space: LayoutFloat = axis_tracks.iter().map(|track| track.base_size).sum();
 
         // If the free space is indefinite, but the grid container has a definite min-width/height
         // use that size to calculate the free space for this step instead.
@@ -1519,7 +1584,8 @@ fn stretch_auto_tracks(
             }
         };
         if free_space > 0.0 {
-            let extra_space_per_auto_track = free_space / num_auto_tracks as f32;
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let extra_space_per_auto_track = free_space / num_auto_tracks as LayoutFloat;
             axis_tracks
                 .iter_mut()
                 .filter(|track| track.max_track_sizing_function.is_auto())
@@ -1532,16 +1598,19 @@ fn stretch_auto_tracks(
 /// Used by both distribute_item_space_to_base_size and maximise_tracks steps
 #[inline(always)]
 fn distribute_space_up_to_limits(
-    space_to_distribute: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    space_to_distribute: LayoutFloat,
     tracks: &mut [GridTrack],
     track_is_affected: impl Fn(&GridTrack) -> bool,
-    track_distribution_proportion: impl Fn(&GridTrack) -> f32,
-    track_affected_property: impl Fn(&GridTrack) -> f32,
-    track_limit: impl Fn(&GridTrack) -> f32,
-) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    track_distribution_proportion: impl Fn(&GridTrack) -> LayoutFloat,
+    track_affected_property: impl Fn(&GridTrack) -> LayoutFloat,
+    track_limit: impl Fn(&GridTrack) -> LayoutFloat,
+) -> LayoutFloat {
     /// Define a small constant to avoid infinite loops due to rounding errors. Rather than stopping distributing
     /// extra space when it gets to exactly zero, we will stop when it falls below this amount
-    const THRESHOLD: f32 = 0.01;
+    // VIPER-PATCH(layout-float-alias): the alias.
+    const THRESHOLD: LayoutFloat = 0.01;
 
     // Each iteration freezes at least one track at its limit, so the loop always completes within
     // `tracks.len() + 1` iterations. Non-finite values (which can arise from non-finite style inputs) can
@@ -1553,7 +1622,8 @@ fn distribute_space_up_to_limits(
         if space_to_distribute <= THRESHOLD {
             break;
         }
-        let track_distribution_proportion_sum: f32 = tracks
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let track_distribution_proportion_sum: LayoutFloat = tracks
             .iter()
             .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
             .filter(|track| track_is_affected(track))

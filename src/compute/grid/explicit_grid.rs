@@ -11,6 +11,8 @@ use core::cmp::min;
 
 use super::MAX_GRID_TRACKS;
 use crate::{GenericGridTemplateComponent, GenericRepetition, GridContainerStyle};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The auto-repeat fit strategy to use
 pub(crate) enum AutoRepeatStrategy {
@@ -26,9 +28,11 @@ pub(crate) enum AutoRepeatStrategy {
 /// Compute the number of rows and columns in the explicit grid
 pub(crate) fn compute_explicit_grid_size_in_axis(
     style: &impl GridContainerStyle,
-    auto_fit_container_size: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    auto_fit_container_size: Option<LayoutFloat>,
     auto_fit_strategy: AutoRepeatStrategy,
-    resolve_calc_value: impl Fn(*const (), f32) -> f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    resolve_calc_value: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     axis: AbsoluteAxis,
 ) -> (u16, u16) {
     let template = match axis {
@@ -125,15 +129,17 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
             /// otherwise, flooring the max track sizing function by the min track sizing function if both are definite
             fn track_definite_value(
                 sizing_function: TrackSizingFunction,
-                parent_size: Option<f32>,
-                calc_resolver: impl Fn(*const (), f32) -> f32,
-            ) -> f32 {
+                // VIPER-PATCH(layout-float-alias): the alias.
+                parent_size: Option<LayoutFloat>,
+                calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+            ) -> LayoutFloat {
                 let max_size = sizing_function.max.definite_value(parent_size, &calc_resolver);
                 let min_size = sizing_function.min.definite_value(parent_size, &calc_resolver);
                 max_size.map(|max| max.maybe_max(min_size)).or(min_size).unwrap()
             }
 
-            let non_repeating_track_used_space: f32 = template
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let non_repeating_track_used_space: LayoutFloat = template
                 .clone()
                 .map(|track_def| match track_def {
                     GenericGridTemplateComponent::Single(sizing_function) => {
@@ -146,8 +152,9 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
                                 .map(|sizing_function| {
                                     track_definite_value(sizing_function, parent_size, &resolve_calc_value)
                                 })
-                                .sum::<f32>();
-                            sum * (count as f32)
+                                // VIPER-PATCH(layout-float-alias): the alias.
+                                .sum::<LayoutFloat>();
+                            sum * (count as LayoutFloat)
                         }
                         RepetitionCount::AutoFit | RepetitionCount::AutoFill => 0.0,
                     },
@@ -156,15 +163,19 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
             let gap_size = style.gap().get_abs(axis).resolve_or_zero(Some(inner_container_size), &resolve_calc_value);
 
             // Compute the amount of space that a single repetition of the repeated track list takes
-            let per_repetition_track_used_space: f32 = repetition_definition_iter
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let per_repetition_track_used_space: LayoutFloat = repetition_definition_iter
                 .map(|sizing_function| track_definite_value(sizing_function, parent_size, &resolve_calc_value))
-                .sum::<f32>();
+                // VIPER-PATCH(layout-float-alias): the alias.
+                .sum::<LayoutFloat>();
 
             // We special case the first repetition here because the number of gaps in the first repetition
             // depends on the number of non-repeating tracks in the template
             let first_repetition_and_non_repeating_tracks_used_space = non_repeating_track_used_space
                 + per_repetition_track_used_space
-                + ((non_auto_repeating_track_count as u32 + repetition_track_count as u32).saturating_sub(1) as f32
+                // VIPER-PATCH(layout-float-alias): the alias.
+                + ((non_auto_repeating_track_count as u32 + repetition_track_count as u32).saturating_sub(1)
+                    as LayoutFloat
                     * gap_size);
 
             // If a single repetition already overflows the container then we return 1 as the repetition count
@@ -172,7 +183,8 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
             if first_repetition_and_non_repeating_tracks_used_space > inner_container_size {
                 1u32
             } else {
-                let per_repetition_gap_used_space = (repetition_track_count as f32) * gap_size;
+                // VIPER-PATCH(layout-float-alias): the alias.
+                let per_repetition_gap_used_space = (repetition_track_count as LayoutFloat) * gap_size;
                 let per_repetition_used_space = per_repetition_track_used_space + per_repetition_gap_used_space;
                 let num_repetition_that_fit = (inner_container_size
                     - first_repetition_and_non_repeating_tracks_used_space)

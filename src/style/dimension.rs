@@ -4,6 +4,8 @@ use crate::geometry::Rect;
 use crate::style_helpers::{FromLength, FromPercent, TaffyAuto, TaffyZero};
 #[cfg(feature = "parse")]
 use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Token};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// A unit of linear measurement
 ///
@@ -235,7 +237,12 @@ impl LengthPercentageAuto {
     ///   - Some(resolved) using the provided context for Percent variants
     ///   - None for Auto variants
     #[inline(always)]
-    pub fn resolve_to_option(self, context: f32, calc_resolver: impl Fn(*const (), f32) -> f32) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn resolve_to_option(
+        self,
+        context: LayoutFloat,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => Some(context * self.0.value()),

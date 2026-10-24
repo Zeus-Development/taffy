@@ -14,6 +14,8 @@ use core::fmt::Debug;
 use crate::util::parse::{
     from_str_from_css, parse_css_str_entirely, CssParseResult, FromCss, ParseError, Parser, Token,
 };
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Defines the value of the `grid-template-areas` property: the named areas plus the overall
 /// size (in tracks) of the area template.
@@ -1004,7 +1006,8 @@ impl MaxTrackSizingFunction {
 
     /// Returns whether the value can be resolved using `Self::definite_value`
     #[inline(always)]
-    pub fn has_definite_value(self, parent_size: Option<f32>) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn has_definite_value(self, parent_size: Option<LayoutFloat>) -> bool {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => true,
             CompactLength::PERCENT_TAG => parent_size.is_some(),
@@ -1020,9 +1023,10 @@ impl MaxTrackSizingFunction {
     #[inline(always)]
     pub fn definite_value(
         self,
-        parent_size: Option<f32>,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: Option<LayoutFloat>,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
@@ -1038,9 +1042,10 @@ impl MaxTrackSizingFunction {
     #[inline(always)]
     pub fn fit_content_limit(
         self,
-        parent_size: Option<f32>,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: Option<LayoutFloat>,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         #[cfg(not(feature = "calc"))]
         let _ = &calc_resolver;
         match self.0.tag() {
@@ -1061,9 +1066,10 @@ impl MaxTrackSizingFunction {
     #[inline(always)]
     pub fn definite_limit(
         self,
-        parent_size: Option<f32>,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: Option<LayoutFloat>,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         match self.0.tag() {
             CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.value()),
             CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
@@ -1078,9 +1084,10 @@ impl MaxTrackSizingFunction {
     #[inline(always)]
     pub fn resolved_percentage_size(
         self,
-        parent_size: f32,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: LayoutFloat,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         self.0.resolved_percentage_size(parent_size, calc_resolver)
     }
 
@@ -1368,7 +1375,8 @@ impl MinTrackSizingFunction {
 
     /// Returns true if the value is `Auto`, or is a percentage and `parent_size` is `None`
     #[inline(always)]
-    pub fn behaves_as_auto(&self, parent_size: Option<f32>) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn behaves_as_auto(&self, parent_size: Option<LayoutFloat>) -> bool {
         self.0.is_auto() || (parent_size.is_none() && self.0.uses_percentage())
     }
 
@@ -1390,9 +1398,10 @@ impl MinTrackSizingFunction {
     #[inline(always)]
     pub fn definite_value(
         self,
-        parent_size: Option<f32>,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: Option<LayoutFloat>,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
@@ -1407,9 +1416,10 @@ impl MinTrackSizingFunction {
     #[inline(always)]
     pub fn resolved_percentage_size(
         self,
-        parent_size: f32,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        parent_size: LayoutFloat,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         self.0.resolved_percentage_size(parent_size, calc_resolver)
     }
 

@@ -3,6 +3,8 @@
 
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// A trait to conveniently calculate minimums and maximums when some data may not be defined
 ///
@@ -25,8 +27,9 @@ pub trait MaybeMath<In, Out> {
     fn maybe_sub(self, rhs: In) -> Out;
 }
 
-impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
-    fn maybe_min(self, rhs: Option<f32>) -> Option<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl MaybeMath<Option<LayoutFloat>, Option<LayoutFloat>> for Option<LayoutFloat> {
+    fn maybe_min(self, rhs: Option<LayoutFloat>) -> Option<LayoutFloat> {
         match (self, rhs) {
             (Some(l), Some(r)) => Some(l.min(r)),
             (Some(_l), None) => self,
@@ -35,7 +38,8 @@ impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
         }
     }
 
-    fn maybe_max(self, rhs: Option<f32>) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_max(self, rhs: Option<LayoutFloat>) -> Option<LayoutFloat> {
         match (self, rhs) {
             (Some(l), Some(r)) => Some(l.max(r)),
             (Some(_l), None) => self,
@@ -44,7 +48,8 @@ impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
         }
     }
 
-    fn maybe_clamp(self, min: Option<f32>, max: Option<f32>) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_clamp(self, min: Option<LayoutFloat>, max: Option<LayoutFloat>) -> Option<LayoutFloat> {
         match (self, min, max) {
             (Some(base), Some(min), Some(max)) => Some(base.min(max).max(min)),
             (Some(base), None, Some(max)) => Some(base.min(max)),
@@ -54,7 +59,8 @@ impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
         }
     }
 
-    fn maybe_add(self, rhs: Option<f32>) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_add(self, rhs: Option<LayoutFloat>) -> Option<LayoutFloat> {
         match (self, rhs) {
             (Some(l), Some(r)) => Some(l + r),
             (Some(_l), None) => self,
@@ -63,7 +69,8 @@ impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
         }
     }
 
-    fn maybe_sub(self, rhs: Option<f32>) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_sub(self, rhs: Option<LayoutFloat>) -> Option<LayoutFloat> {
         match (self, rhs) {
             (Some(l), Some(r)) => Some(l - r),
             (Some(_l), None) => self,
@@ -73,44 +80,52 @@ impl MaybeMath<Option<f32>, Option<f32>> for Option<f32> {
     }
 }
 
-impl MaybeMath<f32, Option<f32>> for Option<f32> {
-    fn maybe_min(self, rhs: f32) -> Option<f32> {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl MaybeMath<LayoutFloat, Option<LayoutFloat>> for Option<LayoutFloat> {
+    fn maybe_min(self, rhs: LayoutFloat) -> Option<LayoutFloat> {
         self.map(|val| val.min(rhs))
     }
 
-    fn maybe_max(self, rhs: f32) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_max(self, rhs: LayoutFloat) -> Option<LayoutFloat> {
         self.map(|val| val.max(rhs))
     }
 
-    fn maybe_clamp(self, min: f32, max: f32) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_clamp(self, min: LayoutFloat, max: LayoutFloat) -> Option<LayoutFloat> {
         self.map(|val| val.min(max).max(min))
     }
 
-    fn maybe_add(self, rhs: f32) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_add(self, rhs: LayoutFloat) -> Option<LayoutFloat> {
         self.map(|val| val + rhs)
     }
 
-    fn maybe_sub(self, rhs: f32) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_sub(self, rhs: LayoutFloat) -> Option<LayoutFloat> {
         self.map(|val| val - rhs)
     }
 }
 
-impl MaybeMath<Option<f32>, f32> for f32 {
-    fn maybe_min(self, rhs: Option<f32>) -> f32 {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl MaybeMath<Option<LayoutFloat>, LayoutFloat> for LayoutFloat {
+    fn maybe_min(self, rhs: Option<LayoutFloat>) -> LayoutFloat {
         match rhs {
             Some(val) => self.min(val),
             None => self,
         }
     }
 
-    fn maybe_max(self, rhs: Option<f32>) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_max(self, rhs: Option<LayoutFloat>) -> LayoutFloat {
         match rhs {
             Some(val) => self.max(val),
             None => self,
         }
     }
 
-    fn maybe_clamp(self, min: Option<f32>, max: Option<f32>) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_clamp(self, min: Option<LayoutFloat>, max: Option<LayoutFloat>) -> LayoutFloat {
         match (min, max) {
             (Some(min), Some(max)) => self.min(max).max(min),
             (None, Some(max)) => self.min(max),
@@ -119,14 +134,16 @@ impl MaybeMath<Option<f32>, f32> for f32 {
         }
     }
 
-    fn maybe_add(self, rhs: Option<f32>) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_add(self, rhs: Option<LayoutFloat>) -> LayoutFloat {
         match rhs {
             Some(val) => self + val,
             None => self,
         }
     }
 
-    fn maybe_sub(self, rhs: Option<f32>) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_sub(self, rhs: Option<LayoutFloat>) -> LayoutFloat {
         match rhs {
             Some(val) => self - val,
             None => self,
@@ -134,15 +151,17 @@ impl MaybeMath<Option<f32>, f32> for f32 {
     }
 }
 
-impl MaybeMath<f32, AvailableSpace> for AvailableSpace {
-    fn maybe_min(self, rhs: f32) -> AvailableSpace {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl MaybeMath<LayoutFloat, AvailableSpace> for AvailableSpace {
+    fn maybe_min(self, rhs: LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(val) => AvailableSpace::Definite(val.min(rhs)),
             AvailableSpace::MinContent => AvailableSpace::Definite(rhs),
             AvailableSpace::MaxContent => AvailableSpace::Definite(rhs),
         }
     }
-    fn maybe_max(self, rhs: f32) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_max(self, rhs: LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(val) => AvailableSpace::Definite(val.max(rhs)),
             AvailableSpace::MinContent => AvailableSpace::MinContent,
@@ -150,7 +169,8 @@ impl MaybeMath<f32, AvailableSpace> for AvailableSpace {
         }
     }
 
-    fn maybe_clamp(self, min: f32, max: f32) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_clamp(self, min: LayoutFloat, max: LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(val) => AvailableSpace::Definite(val.min(max).max(min)),
             AvailableSpace::MinContent => AvailableSpace::MinContent,
@@ -158,14 +178,16 @@ impl MaybeMath<f32, AvailableSpace> for AvailableSpace {
         }
     }
 
-    fn maybe_add(self, rhs: f32) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_add(self, rhs: LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(val) => AvailableSpace::Definite(val + rhs),
             AvailableSpace::MinContent => AvailableSpace::MinContent,
             AvailableSpace::MaxContent => AvailableSpace::MaxContent,
         }
     }
-    fn maybe_sub(self, rhs: f32) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_sub(self, rhs: LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(val) => AvailableSpace::Definite(val - rhs),
             AvailableSpace::MinContent => AvailableSpace::MinContent,
@@ -174,8 +196,9 @@ impl MaybeMath<f32, AvailableSpace> for AvailableSpace {
     }
 }
 
-impl MaybeMath<Option<f32>, AvailableSpace> for AvailableSpace {
-    fn maybe_min(self, rhs: Option<f32>) -> AvailableSpace {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl MaybeMath<Option<LayoutFloat>, AvailableSpace> for AvailableSpace {
+    fn maybe_min(self, rhs: Option<LayoutFloat>) -> AvailableSpace {
         match (self, rhs) {
             (AvailableSpace::Definite(val), Some(rhs)) => AvailableSpace::Definite(val.min(rhs)),
             (AvailableSpace::Definite(val), None) => AvailableSpace::Definite(val),
@@ -185,7 +208,8 @@ impl MaybeMath<Option<f32>, AvailableSpace> for AvailableSpace {
             (AvailableSpace::MaxContent, None) => AvailableSpace::MaxContent,
         }
     }
-    fn maybe_max(self, rhs: Option<f32>) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_max(self, rhs: Option<LayoutFloat>) -> AvailableSpace {
         match (self, rhs) {
             (AvailableSpace::Definite(val), Some(rhs)) => AvailableSpace::Definite(val.max(rhs)),
             (AvailableSpace::Definite(val), None) => AvailableSpace::Definite(val),
@@ -194,7 +218,8 @@ impl MaybeMath<Option<f32>, AvailableSpace> for AvailableSpace {
         }
     }
 
-    fn maybe_clamp(self, min: Option<f32>, max: Option<f32>) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_clamp(self, min: Option<LayoutFloat>, max: Option<LayoutFloat>) -> AvailableSpace {
         match (self, min, max) {
             (AvailableSpace::Definite(val), Some(min), Some(max)) => AvailableSpace::Definite(val.min(max).max(min)),
             (AvailableSpace::Definite(val), None, Some(max)) => AvailableSpace::Definite(val.min(max)),
@@ -205,7 +230,8 @@ impl MaybeMath<Option<f32>, AvailableSpace> for AvailableSpace {
         }
     }
 
-    fn maybe_add(self, rhs: Option<f32>) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_add(self, rhs: Option<LayoutFloat>) -> AvailableSpace {
         match (self, rhs) {
             (AvailableSpace::Definite(val), Some(rhs)) => AvailableSpace::Definite(val + rhs),
             (AvailableSpace::Definite(val), None) => AvailableSpace::Definite(val),
@@ -213,7 +239,8 @@ impl MaybeMath<Option<f32>, AvailableSpace> for AvailableSpace {
             (AvailableSpace::MaxContent, _) => AvailableSpace::MaxContent,
         }
     }
-    fn maybe_sub(self, rhs: Option<f32>) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn maybe_sub(self, rhs: Option<LayoutFloat>) -> AvailableSpace {
         match (self, rhs) {
             (AvailableSpace::Definite(val), Some(rhs)) => AvailableSpace::Definite(val - rhs),
             (AvailableSpace::Definite(val), None) => AvailableSpace::Definite(val),

@@ -5,6 +5,8 @@ use crate::style_helpers::TaffyMaxContent;
 use crate::sys::DefaultCheapStr;
 use crate::tree::NodeId;
 use crate::util::sys::{f32_max, f32_min};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Whether we are performing a full layout, or we merely need to size the node
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -34,9 +36,11 @@ pub enum SizingMode {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CollapsibleMarginSet {
     /// The largest positive margin
-    positive: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    positive: LayoutFloat,
     /// The smallest negative margin (with largest absolute value)
-    negative: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    negative: LayoutFloat,
 }
 
 impl CollapsibleMarginSet {
@@ -44,7 +48,8 @@ impl CollapsibleMarginSet {
     pub const ZERO: Self = Self { positive: 0.0, negative: 0.0 };
 
     /// Create a set from a single margin
-    pub fn from_margin(margin: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn from_margin(margin: LayoutFloat) -> Self {
         if margin >= 0.0 {
             Self { positive: margin, negative: 0.0 }
         } else {
@@ -53,7 +58,8 @@ impl CollapsibleMarginSet {
     }
 
     /// Collapse a single margin with this set
-    pub fn collapse_with_margin(mut self, margin: f32) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn collapse_with_margin(mut self, margin: LayoutFloat) -> Self {
         if margin >= 0.0 {
             self.positive = f32_max(self.positive, margin);
         } else {
@@ -71,7 +77,8 @@ impl CollapsibleMarginSet {
 
     /// Resolve the resultant margin from this set once all collapsible margins
     /// have been collapsed into it
-    pub fn resolve(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn resolve(&self) -> LayoutFloat {
         self.positive + self.negative
     }
 }
@@ -139,7 +146,8 @@ pub struct LayoutInput {
     ///
     ///   "The exact size of this node is WIDTHxHEIGHT. Please lay out your children"
     ///
-    pub known_dimensions: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub known_dimensions: Size<Option<LayoutFloat>>,
     /// Whether each known dimension should be treated as a *definite* size when laying out the node's
     /// own content (resolving percentage sizes of children, and collecting flex items into flex lines).
     ///
@@ -152,7 +160,8 @@ pub struct LayoutInput {
     /// This flag is ignored (treated as `true`) for axes where the corresponding known dimension is `None`.
     pub known_dimensions_are_definite: Size<bool>,
     /// Parent size dimensions are intended to be used for percentage resolution.
-    pub parent_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub parent_size: Size<Option<LayoutFloat>>,
     /// Available space represents an amount of space to layout into, and is used as a soft constraint
     /// for the purpose of wrapping.
     ///
@@ -207,9 +216,11 @@ impl LayoutInput {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Baselines {
     /// The first baseline of the node, if any
-    pub first: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub first: Option<LayoutFloat>,
     /// The last baseline of the node, if any
-    pub last: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub last: Option<LayoutFloat>,
 }
 
 impl Baselines {
@@ -217,7 +228,8 @@ impl Baselines {
     pub const NONE: Self = Self { first: None, last: None };
 
     /// Create a `Baselines` from just a first baseline
-    pub const fn from_first(first: Option<f32>) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn from_first(first: Option<LayoutFloat>) -> Self {
         Self { first, last: None }
     }
 }
@@ -277,7 +289,8 @@ impl AxisStaticAlign {
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct AxisStaticPosition {
     /// The alignment container in this axis
-    pub area: Line<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub area: Line<LayoutFloat>,
     /// The alignment to apply to the box's margin box within `area`
     pub align: AxisStaticAlign,
 }
@@ -285,7 +298,8 @@ pub struct AxisStaticPosition {
 impl AxisStaticPosition {
     /// Create a `AxisStaticPosition` with a degenerate (zero-extent) area at `anchor` and no
     /// safe fallback
-    pub const fn from_edge(anchor: f32, edge: AxisStaticEdge) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn from_edge(anchor: LayoutFloat, edge: AxisStaticEdge) -> Self {
         Self { area: Line { start: anchor, end: anchor }, align: AxisStaticAlign::from_keyword(edge) }
     }
 
@@ -299,7 +313,8 @@ impl AxisStaticPosition {
     /// container's direction (see [`AlignSelf::resolve_self_relative`]).
     /// `axis_is_rtl` is whether this axis is the inline axis of a right-to-left static-position
     /// containing block, in which case `start` and `end` are flipped.
-    pub fn from_alignment(alignment: AlignSelf, area: Line<f32>, axis_is_rtl: bool) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn from_alignment(alignment: AlignSelf, area: Line<LayoutFloat>, axis_is_rtl: bool) -> Self {
         debug_assert!(
             !matches!(alignment.keyword, AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd),
             "self-start/self-end must be resolved before computing the static position"
@@ -431,7 +446,8 @@ impl OofCandidates {
     /// This is used to convert areas from being relative to a child node's border box to being
     /// relative to the parent node's border box as candidates bubble up the tree.
     #[inline]
-    pub fn translate(&mut self, offset: Point<f32>) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn translate(&mut self, offset: Point<LayoutFloat>) {
         for candidate in self.as_mut_slice() {
             candidate.static_position.x.area.start += offset.x;
             candidate.static_position.x.area.end += offset.x;
@@ -461,9 +477,11 @@ impl<'a> IntoIterator for &'a OofCandidates {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct OofPositioningArea {
     /// The size of the area
-    pub size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub size: Size<LayoutFloat>,
     /// The offset of the area from the container's border box origin
-    pub offset: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub offset: Point<LayoutFloat>,
 }
 
 /// A struct containing the result of laying a single node, which is returned up to the parent node
@@ -476,11 +494,13 @@ pub struct OofPositioningArea {
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct LayoutOutput {
     /// The size of the node
-    pub size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub size: Size<LayoutFloat>,
     #[cfg(feature = "content_size")]
     /// The scrollable overflow rectangle of the node's content
     /// (see [`Layout::scrollable_overflow_rect`] for the coordinate conventions)
-    pub scrollable_overflow_rect: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub scrollable_overflow_rect: Rect<LayoutFloat>,
     /// The first and last baselines of the node in the horizontal axis, if any
     pub baselines: Baselines,
     /// Top margin that can be collapsed with. This is used for CSS block layout and can be set to
@@ -530,8 +550,9 @@ impl LayoutOutput {
 
     /// Constructor to create a `LayoutOutput` from just the size, scrollable overflow rectangle and baselines
     pub fn from_sizes_and_baselines(
-        size: Size<f32>,
-        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] scrollable_overflow_rect: Rect<f32>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        size: Size<LayoutFloat>,
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] scrollable_overflow_rect: Rect<LayoutFloat>,
         baselines: Baselines,
     ) -> Self {
         Self {
@@ -548,7 +569,8 @@ impl LayoutOutput {
     }
 
     /// Construct a `LayoutOutput` from just the container size and scrollable overflow rectangle
-    pub fn from_sizes(size: Size<f32>, scrollable_overflow_rect: Rect<f32>) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn from_sizes(size: Size<LayoutFloat>, scrollable_overflow_rect: Rect<LayoutFloat>) -> Self {
         Self::from_sizes_and_baselines(size, scrollable_overflow_rect, Baselines::NONE)
     }
 
@@ -573,7 +595,8 @@ impl LayoutOutput {
     }
 
     /// Construct a `LayoutOutput` from just the container's size.
-    pub fn from_outer_size(size: Size<f32>) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn from_outer_size(size: Size<LayoutFloat>) -> Self {
         Self::from_sizes(size, Rect::ZERO)
     }
 }
@@ -588,9 +611,11 @@ pub struct Layout {
     /// This is effectively a topological sort of each tree.
     pub order: u32,
     /// The top-left corner of the node
-    pub location: Point<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub location: Point<LayoutFloat>,
     /// The width and height of the node
-    pub size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub size: Size<LayoutFloat>,
     #[cfg(feature = "content_size")]
     /// The scrollable overflow rectangle of the node: the axis-aligned rectangle containing the
     /// content of the node (the border boxes of its descendants plus their non-clipped overflow),
@@ -605,15 +630,20 @@ pub struct Layout {
     /// values represent overflow before the scroll origin, which is unreachable by scrolling) and
     /// `right`/`bottom` are `>= 0.0` (representing the reachable extent of the content, which is
     /// useful for computing a "scroll width/height" for scrollable nodes).
-    pub scrollable_overflow_rect: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub scrollable_overflow_rect: Rect<LayoutFloat>,
     /// The size of the scrollbars in each dimension. If there is no scrollbar then the size will be zero.
-    pub scrollbar_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub scrollbar_size: Size<LayoutFloat>,
     /// The size of the borders of the node
-    pub border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub border: Rect<LayoutFloat>,
     /// The size of the padding of the node
-    pub padding: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub padding: Rect<LayoutFloat>,
     /// The size of the margin of the node
-    pub margin: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub margin: Rect<LayoutFloat>,
 }
 
 impl Default for Layout {
@@ -664,29 +694,34 @@ impl Layout {
 
     /// Get the width of the node's content box
     #[inline]
-    pub fn content_box_width(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn content_box_width(&self) -> LayoutFloat {
         self.size.width - self.padding.left - self.padding.right - self.border.left - self.border.right
     }
 
     /// Get the height of the node's content box
     #[inline]
-    pub fn content_box_height(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn content_box_height(&self) -> LayoutFloat {
         self.size.height - self.padding.top - self.padding.bottom - self.border.top - self.border.bottom
     }
 
     /// Get the size of the node's content box
     #[inline]
-    pub fn content_box_size(&self) -> Size<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn content_box_size(&self) -> Size<LayoutFloat> {
         Size { width: self.content_box_width(), height: self.content_box_height() }
     }
 
     /// Get x offset of the node's content box relative to it's parent's border box
-    pub fn content_box_x(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn content_box_x(&self) -> LayoutFloat {
         self.location.x + self.border.left + self.padding.left
     }
 
     /// Get x offset of the node's content box relative to it's parent's border box
-    pub fn content_box_y(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn content_box_y(&self) -> LayoutFloat {
         self.location.y + self.border.top + self.padding.top
     }
 }
@@ -695,7 +730,8 @@ impl Layout {
 impl Layout {
     /// Return the maximum horizontal scroll offset of the node.
     /// This is the reachable extent of the content less the width of the padding box, floored at zero.
-    pub fn scroll_width(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn scroll_width(&self) -> LayoutFloat {
         f32_max(
             0.0,
             self.scrollable_overflow_rect.right + f32_min(self.scrollbar_size.width, self.size.width) - self.size.width
@@ -706,7 +742,8 @@ impl Layout {
 
     /// Return the maximum vertical scroll offset of the node.
     /// This is the reachable extent of the content less the height of the padding box, floored at zero.
-    pub fn scroll_height(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn scroll_height(&self) -> LayoutFloat {
         f32_max(
             0.0,
             self.scrollable_overflow_rect.bottom + f32_min(self.scrollbar_size.height, self.size.height)

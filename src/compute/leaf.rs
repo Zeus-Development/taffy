@@ -14,6 +14,8 @@ use crate::util::MaybeMath;
 use crate::util::{MaybeResolve, ResolveOrZero};
 use crate::{BoxSizing, CoreStyle};
 use core::unreachable;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Compute the size of a leaf node (node with no children)
 ///
@@ -22,11 +24,13 @@ use core::unreachable;
 pub fn compute_leaf_layout<MeasureFunction>(
     inputs: LayoutInput,
     style: &impl CoreStyle,
-    resolve_calc_value: impl Fn(*const (), f32) -> f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    resolve_calc_value: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     measure_function: MeasureFunction,
 ) -> LayoutOutput
 where
-    MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    MeasureFunction: FnOnce(Size<Option<LayoutFloat>>, Size<AvailableSpace>) -> Size<LayoutFloat>,
 {
     // VIPER-PATCH(size-containment): a size-contained leaf is sized as if it had no content, without calling
     // the measure function, and then measured in that size.
@@ -41,11 +45,13 @@ where
 fn leaf_layout<MeasureFunction>(
     inputs: LayoutInput,
     style: &impl CoreStyle,
-    resolve_calc_value: impl Fn(*const (), f32) -> f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    resolve_calc_value: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     measure_function: MeasureFunction,
 ) -> LayoutOutput
 where
-    MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    MeasureFunction: FnOnce(Size<Option<LayoutFloat>>, Size<AvailableSpace>) -> Size<LayoutFloat>,
 {
     let LayoutInput { known_dimensions, parent_size, available_space, sizing_mode, run_mode, .. } = inputs;
 

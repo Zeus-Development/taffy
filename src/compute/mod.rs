@@ -62,6 +62,8 @@ use crate::util::debug::{debug_log, debug_log_node, debug_pop_node, debug_push_n
 use crate::util::sys::{round, Vec};
 use crate::util::ResolveOrZero;
 use crate::{CacheTree, MaybeMath, MaybeResolve};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Compute layout for the root node in the tree
 ///
@@ -376,7 +378,13 @@ pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
     return round_layout_inner(tree, node_id, 0.0, 0.0);
 
     /// Recursive function to apply rounding to all descendents
-    fn round_layout_inner(tree: &mut impl RoundTree, node_id: NodeId, cumulative_x: f32, cumulative_y: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn round_layout_inner(
+        tree: &mut impl RoundTree,
+        node_id: NodeId,
+        cumulative_x: LayoutFloat,
+        cumulative_y: LayoutFloat,
+    ) {
         let unrounded_layout = tree.get_unrounded_layout(node_id);
         let mut layout = unrounded_layout;
 
@@ -440,9 +448,10 @@ pub fn round_layout(tree: &mut impl RoundTree, node_id: NodeId) {
     /// This is split into a separate function to make it easier to feature flag.
     fn round_scrollable_overflow_rect(
         layout: &mut Layout,
-        unrounded_rect: crate::geometry::Rect<f32>,
-        cumulative_x: f32,
-        cumulative_y: f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        unrounded_rect: crate::geometry::Rect<LayoutFloat>,
+        cumulative_x: LayoutFloat,
+        cumulative_y: LayoutFloat,
     ) {
         layout.scrollable_overflow_rect.left = round(cumulative_x + unrounded_rect.left) - round(cumulative_x);
         layout.scrollable_overflow_rect.right = round(cumulative_x + unrounded_rect.right) - round(cumulative_x);

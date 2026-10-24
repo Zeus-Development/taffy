@@ -4,6 +4,8 @@ use crate::{
     style::{LengthPercentage, MaxTrackSizingFunction, MinTrackSizingFunction},
     util::sys::f32_min,
 };
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Whether a GridTrack represents an actual track or a gutter.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -34,32 +36,40 @@ pub(in super::super) struct GridTrack {
     pub max_track_sizing_function: MaxTrackSizingFunction,
 
     /// The distance of the start of the track from the start of the grid container
-    pub offset: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub offset: LayoutFloat,
 
     /// The size (width/height as applicable) of the track
-    pub base_size: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub base_size: LayoutFloat,
 
     /// A temporary scratch value when sizing tracks
     /// Note: can be infinity
-    pub growth_limit: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub growth_limit: LayoutFloat,
 
     /// A temporary scratch value when sizing tracks. Is used as an additional amount to add to the
     /// estimate for the available space in the opposite axis when content sizing items
-    pub content_alignment_adjustment: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub content_alignment_adjustment: LayoutFloat,
 
     /// A temporary scratch value when "distributing space" to avoid clobbering planned increase variable
-    pub item_incurred_increase: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub item_incurred_increase: LayoutFloat,
     /// A temporary scratch value when "distributing space" to avoid clobbering the main variable
-    pub base_size_planned_increase: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub base_size_planned_increase: LayoutFloat,
     /// A temporary scratch value when "distributing space" to avoid clobbering the main variable
-    pub growth_limit_planned_increase: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub growth_limit_planned_increase: LayoutFloat,
     /// A temporary scratch value when "distributing space"
     /// See: https://www.w3.org/TR/css3-grid-layout/#infinitely-growable
     pub infinitely_growable: bool,
 
     /// The resolved `fit-content()` limit of the max track sizing function (infinity if it is not `fit-content()`
     /// or the limit cannot be resolved). Resolved once per track sizing pass by `resolve_fit_content_limit`.
-    pub fit_content_limit: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fit_content_limit: LayoutFloat,
 }
 
 impl GridTrack {
@@ -82,7 +92,8 @@ impl GridTrack {
             base_size_planned_increase: 0.0,
             growth_limit_planned_increase: 0.0,
             infinitely_growable: false,
-            fit_content_limit: f32::INFINITY,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            fit_content_limit: LayoutFloat::INFINITY,
         }
     }
 
@@ -109,7 +120,8 @@ impl GridTrack {
         self.is_collapsed = true;
         self.min_track_sizing_function = MinTrackSizingFunction::ZERO;
         self.max_track_sizing_function = MaxTrackSizingFunction::ZERO;
-        self.fit_content_limit = f32::INFINITY;
+        // VIPER-PATCH(layout-float-alias): the alias.
+        self.fit_content_limit = LayoutFloat::INFINITY;
     }
 
     #[inline(always)]
@@ -136,24 +148,28 @@ impl GridTrack {
     #[inline]
     pub fn resolve_fit_content_limit(
         &mut self,
-        axis_inner_node_size: Option<f32>,
-        calc_resolver: impl Fn(*const (), f32) -> f32,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        axis_inner_node_size: Option<LayoutFloat>,
+        calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) {
         self.fit_content_limit = self
             .max_track_sizing_function
             .fit_content_limit(axis_inner_node_size, calc_resolver)
-            .unwrap_or(f32::INFINITY);
+            // VIPER-PATCH(layout-float-alias): the alias.
+            .unwrap_or(LayoutFloat::INFINITY);
     }
 
     #[inline(always)]
     /// Returns the resolved `fit-content()` limit of the track (infinity if the track is not `fit-content()`)
-    pub fn fit_content_limit(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn fit_content_limit(&self) -> LayoutFloat {
         self.fit_content_limit
     }
 
     #[inline]
     /// Returns the track's growth limit, capped by its `fit-content()` limit (if any)
-    pub fn fit_content_limited_growth_limit(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn fit_content_limited_growth_limit(&self) -> LayoutFloat {
         f32_min(self.growth_limit, self.fit_content_limit)
     }
 

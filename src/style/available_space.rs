@@ -7,6 +7,8 @@ use crate::{
 
 #[cfg(feature = "parse")]
 use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Token};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The amount of space available to a node in a given axis
 /// <https://www.w3.org/TR/css-sizing-3/#available>
@@ -14,7 +16,8 @@ use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Tok
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum AvailableSpace {
     /// The amount of space available is the specified number of pixels
-    Definite(f32),
+    // VIPER-PATCH(layout-float-alias): the alias.
+    Definite(LayoutFloat),
     /// The amount of space available is indefinite and the node should be laid out under a min-content constraint
     MinContent,
     /// The amount of space available is indefinite and the node should be laid out under a max-content constraint
@@ -31,7 +34,8 @@ impl TaffyMinContent for AvailableSpace {
 }
 impl FromLength for AvailableSpace {
     fn from_length<Input: Into<f64> + Copy>(value: Input) -> Self {
-        Self::Definite(value.into() as f32)
+        // VIPER-PATCH(layout-float-alias): the alias.
+        Self::Definite(value.into() as LayoutFloat)
     }
 }
 
@@ -58,7 +62,8 @@ impl AvailableSpace {
 
     /// Convert to Option
     /// Definite values become Some(value). Constraints become None.
-    pub const fn into_option(self) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub const fn into_option(self) -> Option<LayoutFloat> {
         match self {
             AvailableSpace::Definite(value) => Some(value),
             _ => None,
@@ -66,13 +71,15 @@ impl AvailableSpace {
     }
 
     /// Return the definite value or a default value
-    pub fn unwrap_or(self, default: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn unwrap_or(self, default: LayoutFloat) -> LayoutFloat {
         self.into_option().unwrap_or(default)
     }
 
     /// Return the definite value. Panic is the value is not definite.
     #[track_caller]
-    pub fn unwrap(self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn unwrap(self) -> LayoutFloat {
         self.into_option().unwrap()
     }
 
@@ -93,12 +100,14 @@ impl AvailableSpace {
     }
 
     /// Return the definite value or the result of the default value callback
-    pub fn unwrap_or_else(self, default_cb: impl FnOnce() -> f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn unwrap_or_else(self, default_cb: impl FnOnce() -> LayoutFloat) -> LayoutFloat {
         self.into_option().unwrap_or_else(default_cb)
     }
 
     /// If passed value is Some then return AvailableSpace::Definite containing that value, else return self
-    pub fn maybe_set(self, value: Option<f32>) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn maybe_set(self, value: Option<LayoutFloat>) -> AvailableSpace {
         match value {
             Some(value) => AvailableSpace::Definite(value),
             None => self,
@@ -106,7 +115,8 @@ impl AvailableSpace {
     }
 
     /// If passed value is Some then return AvailableSpace::Definite containing that value, else return self
-    pub fn map_definite_value(self, map_function: impl FnOnce(f32) -> f32) -> AvailableSpace {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn map_definite_value(self, map_function: impl FnOnce(LayoutFloat) -> LayoutFloat) -> AvailableSpace {
         match self {
             AvailableSpace::Definite(value) => AvailableSpace::Definite(map_function(value)),
             _ => self,
@@ -114,9 +124,11 @@ impl AvailableSpace {
     }
 
     /// Compute free_space given the passed used_space
-    pub fn compute_free_space(&self, used_space: f32) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn compute_free_space(&self, used_space: LayoutFloat) -> LayoutFloat {
         match self {
-            AvailableSpace::MaxContent => f32::INFINITY,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            AvailableSpace::MaxContent => LayoutFloat::INFINITY,
             AvailableSpace::MinContent => 0.0,
             AvailableSpace::Definite(available_space) => available_space - used_space,
         }
@@ -127,7 +139,8 @@ impl AvailableSpace {
     pub fn is_roughly_equal(self, other: AvailableSpace) -> bool {
         use AvailableSpace::*;
         match (self, other) {
-            (Definite(a), Definite(b)) => abs(a - b) < f32::EPSILON,
+            // VIPER-PATCH(layout-float-alias): the alias.
+            (Definite(a), Definite(b)) => abs(a - b) < LayoutFloat::EPSILON,
             (MinContent, MinContent) => true,
             (MaxContent, MaxContent) => true,
             _ => false,
@@ -135,14 +148,16 @@ impl AvailableSpace {
     }
 }
 
-impl From<f32> for AvailableSpace {
-    fn from(value: f32) -> Self {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl From<LayoutFloat> for AvailableSpace {
+    fn from(value: LayoutFloat) -> Self {
         Self::Definite(value)
     }
 }
 
-impl From<Option<f32>> for AvailableSpace {
-    fn from(option: Option<f32>) -> Self {
+// VIPER-PATCH(layout-float-alias): the alias.
+impl From<Option<LayoutFloat>> for AvailableSpace {
+    fn from(option: Option<LayoutFloat>) -> Self {
         match option {
             Some(value) => Self::Definite(value),
             None => Self::MaxContent,
@@ -152,12 +167,14 @@ impl From<Option<f32>> for AvailableSpace {
 
 impl Size<AvailableSpace> {
     /// Convert `Size<AvailableSpace>` into `Size<Option<f32>>`
-    pub fn into_options(self) -> Size<Option<f32>> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn into_options(self) -> Size<Option<LayoutFloat>> {
         Size { width: self.width.into_option(), height: self.height.into_option() }
     }
 
     /// If passed value is Some then return AvailableSpace::Definite containing that value, else return self
-    pub fn maybe_set(self, value: Size<Option<f32>>) -> Size<AvailableSpace> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn maybe_set(self, value: Size<Option<LayoutFloat>>) -> Size<AvailableSpace> {
         Size { width: self.width.maybe_set(value.width), height: self.height.maybe_set(value.height) }
     }
 }

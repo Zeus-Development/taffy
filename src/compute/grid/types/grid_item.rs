@@ -13,14 +13,18 @@ use crate::util::sys::f32_max;
 use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 use crate::{AlignItemsKeyword, BoxSizing, GridItemStyle, LengthPercentage};
 use core::ops::Range;
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// The known_dimensions computed for a grid item for a given grid area size
 #[derive(Debug, Clone, Copy)]
 pub(in super::super) struct KnownDimensionsCacheEntry {
     /// The grid area size that `known_dimensions` was computed for
-    grid_area_size: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    grid_area_size: Size<Option<LayoutFloat>>,
     /// The cached known_dimensions
-    known_dimensions: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    known_dimensions: Size<Option<LayoutFloat>>,
 }
 
 /// Represents a single grid item
@@ -70,15 +74,19 @@ pub(in super::super) struct GridItem {
     /// The item's justify_self property, or the parent's justify_items property if it is `None`
     pub justify_self: AlignSelf,
     /// The items first baseline (horizontal)
-    pub baseline: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub baseline: Option<LayoutFloat>,
     /// Shim for baseline alignment that acts like an extra top margin
     /// TODO: Support last baseline and vertical text baselines
-    pub baseline_shim: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub baseline_shim: LayoutFloat,
     // VIPER-PATCH(last-baseline): the last-baseline counterparts of `baseline` and `baseline_shim`.
     /// The distance from the item's last baseline to its margin box's bottom edge, measured while the rows are sized
-    pub last_baseline_descent: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub last_baseline_descent: LayoutFloat,
     /// Shim for last-baseline alignment that acts like an extra bottom margin
-    pub last_baseline_shim: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub last_baseline_shim: LayoutFloat,
     /// The item's first and last baselines from its final layout, from its border box's top edge. Used to compute
     /// the container's last baseline.
     pub final_baselines: Baselines,
@@ -101,21 +109,27 @@ pub(in super::super) struct GridItem {
 
     // Caches for intrinsic size computation. These caches are only valid for a single run of the track-sizing algorithm.
     /// Cache for the known_dimensions input to intrinsic sizing computation
-    pub grid_area_size_cache: Option<Size<Option<f32>>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub grid_area_size_cache: Option<Size<Option<LayoutFloat>>>,
     /// Cache for the known_dimensions passed to the child when computing its intrinsic contributions, stored along with
     /// the grid area size it was computed for. Must be cleared whenever `baseline_shim` changes.
     pub known_dimensions_cache: Option<KnownDimensionsCacheEntry>,
     /// Cache for the min-content size
-    pub min_content_contribution_cache: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub min_content_contribution_cache: Size<Option<LayoutFloat>>,
     /// Cache for the minimum contribution
-    pub minimum_contribution_cache: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub minimum_contribution_cache: Size<Option<LayoutFloat>>,
     /// Cache for the max-content size
-    pub max_content_contribution_cache: Size<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub max_content_contribution_cache: Size<Option<LayoutFloat>>,
 
     /// Final y position. Used to compute baseline alignment for the container.
-    pub y_position: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub y_position: LayoutFloat,
     /// Final height. Used to compute baseline alignment for the container.
-    pub height: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub height: LayoutFloat,
 
     /// Out-of-flow candidates bubbled out of this item's subtree (anchors relative to the
     /// container's border box)
@@ -286,15 +300,17 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
-        axis_parent_size: Option<f32>,
-        resolve_calc_value: &dyn Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        axis_parent_size: Option<LayoutFloat>,
+        resolve_calc_value: &dyn Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         let spanned_tracks = &axis_tracks[self.track_range_excluding_lines(axis)];
         let tracks_all_fixed = spanned_tracks.iter().all(|track| {
             track.max_track_sizing_function.definite_limit(axis_parent_size, resolve_calc_value).is_some()
         });
         if tracks_all_fixed {
-            let limit: f32 = spanned_tracks
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let limit: LayoutFloat = spanned_tracks
                 .iter()
                 .map(|track| {
                     track.max_track_sizing_function.definite_limit(axis_parent_size, resolve_calc_value).unwrap()
@@ -312,15 +328,17 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
-        axis_parent_size: Option<f32>,
-        resolve_calc_value: &dyn Fn(*const (), f32) -> f32,
-    ) -> Option<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        axis_parent_size: Option<LayoutFloat>,
+        resolve_calc_value: &dyn Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Option<LayoutFloat> {
         let spanned_tracks = &axis_tracks[self.track_range_excluding_lines(axis)];
         let tracks_all_fixed = spanned_tracks.iter().all(|track| {
             track.max_track_sizing_function.definite_value(axis_parent_size, resolve_calc_value).is_some()
         });
         if tracks_all_fixed {
-            let limit: f32 = spanned_tracks
+            // VIPER-PATCH(layout-float-alias): the alias.
+            let limit: LayoutFloat = spanned_tracks
                 .iter()
                 .map(|track| {
                     track.max_track_sizing_function.definite_value(axis_parent_size, resolve_calc_value).unwrap()
@@ -338,8 +356,9 @@ impl GridItem {
     fn known_dimensions_cached(
         &mut self,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-    ) -> Size<Option<f32>> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+    ) -> Size<Option<LayoutFloat>> {
         if let Some(entry) = self.known_dimensions_cache {
             if entry.grid_area_size == grid_area_size {
                 return entry.known_dimensions;
@@ -366,8 +385,9 @@ impl GridItem {
     fn known_dimensions(
         &self,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-    ) -> Size<Option<f32>> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+    ) -> Size<Option<LayoutFloat>> {
         let margins = self.margins_axis_sums_with_baseline_shims(grid_area_size.width, tree);
 
         let aspect_ratio = self.aspect_ratio;
@@ -491,10 +511,11 @@ impl GridItem {
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
         other_axis_tracks: &[GridTrack],
-        available_space: Size<Option<f32>>,
-        get_track_size_estimate: impl Fn(&GridTrack, Option<f32>) -> Option<f32>,
-        resolve_calc_value: &impl Fn(*const (), f32) -> f32,
-    ) -> Size<Option<f32>> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        available_space: Size<Option<LayoutFloat>>,
+        get_track_size_estimate: impl Fn(&GridTrack, Option<LayoutFloat>) -> Option<LayoutFloat>,
+        resolve_calc_value: &impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Size<Option<LayoutFloat>> {
         let mut size = Size::NONE;
         size.set(
             axis,
@@ -514,7 +535,8 @@ impl GridItem {
                         None
                     }
                 })
-                .sum::<Option<f32>>(),
+                // VIPER-PATCH(layout-float-alias): the alias.
+                .sum::<Option<LayoutFloat>>(),
         );
 
         size.set(
@@ -525,7 +547,8 @@ impl GridItem {
                     get_track_size_estimate(track, available_space.get(axis.other()))
                         .map(|size| size + track.content_alignment_adjustment)
                 })
-                .sum::<Option<f32>>(),
+                // VIPER-PATCH(layout-float-alias): the alias.
+                .sum::<Option<LayoutFloat>>(),
         );
 
         size
@@ -537,10 +560,11 @@ impl GridItem {
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
         other_axis_tracks: &[GridTrack],
-        available_space: Size<Option<f32>>,
-        get_track_size_estimate: impl Fn(&GridTrack, Option<f32>) -> Option<f32>,
-        resolve_calc_value: &impl Fn(*const (), f32) -> f32,
-    ) -> Size<Option<f32>> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        available_space: Size<Option<LayoutFloat>>,
+        get_track_size_estimate: impl Fn(&GridTrack, Option<LayoutFloat>) -> Option<LayoutFloat>,
+        resolve_calc_value: &impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+    ) -> Size<Option<LayoutFloat>> {
         self.grid_area_size_cache.unwrap_or_else(|| {
             let grid_area_size = self.grid_area_size(
                 axis,
@@ -560,9 +584,11 @@ impl GridItem {
     #[inline(always)]
     pub fn margins_axis_sums_with_baseline_shims(
         &self,
-        inner_node_width: Option<f32>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        inner_node_width: Option<LayoutFloat>,
         tree: &impl LayoutPartialTree,
-    ) -> Size<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Size<LayoutFloat> {
         Rect {
             left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
             right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
@@ -580,9 +606,10 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-        available_space: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        available_space: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         let known_dimensions = self.known_dimensions_cached(tree, grid_area_size);
         // If the item's size in the axis being measured is already known then that size is its contribution,
         // and we can avoid calling into the child entirely.
@@ -618,9 +645,10 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-        available_space: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        available_space: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         self.min_content_contribution_cache.get(axis).unwrap_or_else(|| {
             let size = self.min_content_contribution(axis, tree, grid_area_size, available_space);
             self.min_content_contribution_cache.set(axis, Some(size));
@@ -633,9 +661,10 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-        available_space: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        available_space: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         let known_dimensions = self.known_dimensions_cached(tree, grid_area_size);
         // If the item's size in the axis being measured is already known then that size is its contribution,
         // and we can avoid calling into the child entirely.
@@ -670,10 +699,12 @@ impl GridItem {
     #[inline(always)]
     fn available_space_minus_margins(
         &self,
-        grid_area_size: Size<Option<f32>>,
-        available_space: Size<Option<f32>>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        available_space: Size<Option<LayoutFloat>>,
         tree: &impl LayoutPartialTree,
-    ) -> Size<Option<f32>> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Size<Option<LayoutFloat>> {
         if available_space.width.is_none() && available_space.height.is_none() {
             return available_space;
         }
@@ -694,7 +725,8 @@ impl GridItem {
     /// (min-content, max-content, fit-content, fit-content(...))
     fn keyword_adjusted_available_space(
         &self,
-        grid_area_size: Size<Option<f32>>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
         available_space: Size<AvailableSpace>,
         tree: &impl LayoutPartialTree,
     ) -> Size<AvailableSpace> {
@@ -726,9 +758,10 @@ impl GridItem {
         &mut self,
         axis: AbstractAxis,
         tree: &mut impl LayoutPartialTree,
-        grid_area_size: Size<Option<f32>>,
-        available_space: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        available_space: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         self.max_content_contribution_cache.get(axis).unwrap_or_else(|| {
             let size = self.max_content_contribution(axis, tree, grid_area_size, available_space);
             self.max_content_contribution_cache.set(axis, Some(size));
@@ -749,9 +782,10 @@ impl GridItem {
         tree: &mut impl LayoutPartialTree,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
-        grid_area_size: Size<Option<f32>>,
-        inner_node_size: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        inner_node_size: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         let padding = self.padding.resolve_or_zero(grid_area_size.width, |val, basis| tree.calc(val, basis));
         let border = self.border.resolve_or_zero(grid_area_size.width, |val, basis| tree.calc(val, basis));
         let padding_border_size = (padding + border).sum_axes();
@@ -850,9 +884,10 @@ impl GridItem {
         tree: &mut impl LayoutPartialTree,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
-        grid_area_size: Size<Option<f32>>,
-        inner_node_size: Size<Option<f32>>,
-    ) -> f32 {
+        // VIPER-PATCH(layout-float-alias): the alias.
+        grid_area_size: Size<Option<LayoutFloat>>,
+        inner_node_size: Size<Option<LayoutFloat>>,
+    ) -> LayoutFloat {
         self.minimum_contribution_cache.get(axis).unwrap_or_else(|| {
             let size = self.minimum_contribution(tree, axis, axis_tracks, grid_area_size, inner_node_size);
             self.minimum_contribution_cache.set(axis, Some(size));

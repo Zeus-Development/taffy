@@ -19,19 +19,23 @@ use crate::compute::common::scrollable_overflow::compute_scrollable_overflow_con
 use crate::compute::common::containment::last_baseline_at_margin_edge;
 use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::{AbsoluteAxis, BoxSizing, Direction, LayoutGridContainer};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Align the grid tracks within the grid according to the align-content (rows) or
 /// justify-content (columns) property. This only does anything if the size of the
 /// grid is not equal to the size of the grid container in the axis being aligned.
 pub(super) fn align_tracks(
-    grid_container_content_box_size: f32,
-    padding: Line<f32>,
-    border: Line<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    grid_container_content_box_size: LayoutFloat,
+    padding: Line<LayoutFloat>,
+    border: Line<LayoutFloat>,
     tracks: &mut [GridTrack],
     track_alignment_style: AlignContent,
     axis_is_reversed: bool,
 ) {
-    let used_size: f32 = tracks.iter().map(|track| track.base_size).sum();
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let used_size: LayoutFloat = tracks.iter().map(|track| track.base_size).sum();
     let free_space = grid_container_content_box_size - used_size;
     let origin = padding.start + border.start;
 
@@ -91,21 +95,26 @@ pub(super) fn align_and_position_item(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     order: u32,
-    grid_area: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    grid_area: Rect<LayoutFloat>,
     // Percentage basis for the item's styles. Grid passes the grid area size; grid lanes (css-grid-3) items
     // have the container's content box as their containing block in the stacking axis.
-    containing_block_size: Size<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    containing_block_size: Size<LayoutFloat>,
     container_alignment_styles: InBothAbsAxis<AlignItems>,
     // VIPER-PATCH(last-baseline): the baseline shims of each axis: in the block axis the first-baseline shim at the top
     // and the last-baseline shim at the bottom, in the inline axis the shim of a `justify-self: last baseline` group.
-    baseline_shims: Size<Line<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    baseline_shims: Size<Line<LayoutFloat>>,
     direction: Direction,
-    container_border_box_width: f32,
-    container_border: Rect<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    container_border_box_width: LayoutFloat,
+    container_border: Rect<LayoutFloat>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
     bubbled_candidates: &mut OofCandidates,
     // VIPER-PATCH(last-baseline): and the item's location, size and baselines.
-) -> (Rect<f32>, Point<f32>, Size<f32>, Baselines) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> (Rect<LayoutFloat>, Point<LayoutFloat>, Size<LayoutFloat>, Baselines) {
     let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
 
     let style = tree.get_grid_child_style(node);
@@ -240,7 +249,8 @@ pub(super) fn align_and_position_item(
     });
 
     // If both axes need to be measured then resolve them with a single measure call
-    let keyword_measured_size: Size<Option<f32>> = match (&keyword_width, &keyword_height) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let keyword_measured_size: Size<Option<LayoutFloat>> = match (&keyword_width, &keyword_height) {
         (
             Some(Some(SizingKeywordResolution::Measure(available_width))),
             Some(Some(SizingKeywordResolution::Measure(available_height))),
@@ -460,7 +470,8 @@ pub(super) fn align_and_position_item(
 
     // VIPER-PATCH(last-baseline): the item's baselines from its border box's top edge, a scroll container's clamped
     // to its border box as the flex and block algorithms clamp them.
-    let clamp = |baseline: Option<f32>| {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let clamp = |baseline: Option<LayoutFloat>| {
         if overflow.y.is_scroll_container() {
             baseline.map(|baseline| baseline.min(height).max(0.0))
         } else {
@@ -478,16 +489,21 @@ pub(super) fn align_and_position_item(
 /// Align and size a grid item along a single axis
 #[allow(clippy::too_many_arguments)]
 pub(super) fn align_item_within_area(
-    grid_area: Line<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    grid_area: Line<LayoutFloat>,
     alignment_style: AlignSelf,
-    resolved_size: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    resolved_size: LayoutFloat,
     position: Position,
-    inset: Line<Option<f32>>,
-    margin: Line<Option<f32>>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    inset: Line<Option<LayoutFloat>>,
+    margin: Line<Option<LayoutFloat>>,
     // VIPER-PATCH(last-baseline): a shim at each end.
-    baseline_shims: Line<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    baseline_shims: Line<LayoutFloat>,
     direction: Direction,
-) -> (f32, Line<f32>) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+) -> (LayoutFloat, Line<LayoutFloat>) {
     // Calculate grid area dimension in the axis
     let non_auto_margin = Line {
         start: margin.start.unwrap_or(0.0) + baseline_shims.start,
@@ -498,7 +514,8 @@ pub(super) fn align_item_within_area(
 
     // Expand auto margins to fill available space
     let auto_margin_count = margin.start.is_none() as u8 + margin.end.is_none() as u8;
-    let auto_margin_size = if auto_margin_count > 0 { free_space / auto_margin_count as f32 } else { 0.0 };
+    // VIPER-PATCH(layout-float-alias): the alias.
+    let auto_margin_size = if auto_margin_count > 0 { free_space / auto_margin_count as LayoutFloat } else { 0.0 };
     // VIPER-PATCH(grid-baseline-margin): the item's own margin is returned, and the baseline shim only moves the
     // item. Upstream returns the start margin with the shim that moves a baseline-aligned item down to its row's
     // baseline, so the used margin-top it reports holds the shim (a flex item's holds none). Chrome moves the item by

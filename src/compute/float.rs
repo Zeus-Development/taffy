@@ -29,11 +29,14 @@
 use core::ops::Range;
 
 use crate::{debug::debug_log, sys::Vec, AvailableSpace, Clear, Direction, FloatDirection, Point, Size};
+// VIPER-PATCH(layout-float-alias): the alias.
+use crate::LayoutFloat;
 
 /// Tolerance used when checking whether a box fits in a horizontal space, to absorb `f32`
 /// rounding errors (e.g. percentage widths and margins that sum to exactly 100% may otherwise
 /// exceed the container width and spuriously wrap)
-pub(crate) const FIT_TOLERANCE: f32 = 0.001;
+// VIPER-PATCH(layout-float-alias): the alias.
+pub(crate) const FIT_TOLERANCE: LayoutFloat = 0.001;
 
 /// An empty "slot" that avoids floats that is suitable for non-floated content
 /// to be laid out into
@@ -42,13 +45,17 @@ pub struct ContentSlot {
     /// The id of the segment that the slot starts in
     pub segment_id: Option<usize>,
     /// The x position of the start of the slot
-    pub x: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub x: LayoutFloat,
     /// The y position of the start of the slot
-    pub y: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub y: LayoutFloat,
     /// The width of the slot
-    pub width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub width: LayoutFloat,
     /// The height of the slot
-    pub height: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub height: LayoutFloat,
 }
 
 /// An empty "slot" that avoids floats that is suitable for a box that establishes
@@ -61,17 +68,21 @@ pub struct BfcSlot {
     /// The id of the segment that the slot starts in
     pub segment_id: Option<usize>,
     /// The x position of the start of the slot (border box edge)
-    pub x: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub x: LayoutFloat,
     /// The y position of the start of the slot
-    pub y: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub y: LayoutFloat,
     /// The space available for the box's border box: the space between float edges
     /// and the margin-inset containing block edges. The box fits in the slot if its
     /// border box width does not exceed this.
-    pub border_width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub border_width: LayoutFloat,
     /// The width that an auto width resolves to (before applying min/max constraints and
     /// the negative-margin lower bound). This differs from `border_width` in that the
     /// trailing margin is subtracted (except for any part of it that overlaps a float).
-    pub stretch_width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub stretch_width: LayoutFloat,
 }
 
 /// A floated box
@@ -80,23 +91,29 @@ pub struct PlacedFloatedBox {
     /// A user defined ID for the box
     // id: u64,
     /// The width of the box
-    pub width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub width: LayoutFloat,
     /// The height of the box
-    pub height: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub height: LayoutFloat,
     /// Horizontal distance from the edge of the container that the box is floated towards
     /// (distance from the left for left floats, from the right for right floats)
-    pub x_inset: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub x_inset: LayoutFloat,
     /// Vertical distance from top edge of the container
-    pub y: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub y: LayoutFloat,
 }
 
 /// A non-overlapping horizontal segment of the Block Formatting Context container
 #[derive(Debug, Clone)]
 struct Segment {
     /// The vertical start and end points of the segment
-    y: Range<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    y: Range<LayoutFloat>,
     /// Left inset in slot 0. Right inset in slot 1.
-    insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    insets: [LayoutFloat; 2],
     /// Whether a float actually occupies the left (slot 0) / right (slot 1) inset.
     /// The insets of a segment created for a float are seeded with the float's containing
     /// block insets on both sides, so a non-zero inset alone does not imply a float.
@@ -109,10 +126,12 @@ impl Segment {
     /// See [`float_fits_horizontally`] for the details of the fit rules.
     fn fits_float_width(
         &self,
-        floated_box: Size<f32>,
+        // VIPER-PATCH(layout-float-alias): the alias.
+        floated_box: Size<LayoutFloat>,
         direction: FloatDirection,
-        bfc_width: f32,
-        cb_insets: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        bfc_width: LayoutFloat,
+        cb_insets: [LayoutFloat; 2],
     ) -> bool {
         float_fits_horizontally(floated_box.width, direction, bfc_width, self.insets, cb_insets)
     }
@@ -132,11 +151,13 @@ impl Segment {
 /// Note that a float which is not constrained by other floats *may* overflow its
 /// containing block's trail edge (rules 1 and 7).
 fn float_fits_horizontally(
-    width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    width: LayoutFloat,
     direction: FloatDirection,
-    bfc_width: f32,
-    float_insets: [f32; 2],
-    cb_insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    bfc_width: LayoutFloat,
+    float_insets: [LayoutFloat; 2],
+    cb_insets: [LayoutFloat; 2],
 ) -> bool {
     let lead = direction as usize;
     let trail = 1 - lead;
@@ -155,32 +176,38 @@ fn float_fits_horizontally(
 #[derive(Debug, Clone)]
 struct FloatFitter {
     /// The overall width of the Block Formatting Context
-    bfc_width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    bfc_width: LayoutFloat,
     /// The total height of the set of segments currently being considered
     slot_height: f64,
     /// The union of the float insets of the set of segments currently being considered
-    float_insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    float_insets: [LayoutFloat; 2],
     /// The insets of the box's containing block from the edges of the Block Formatting Context
-    cb_insets: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    cb_insets: [LayoutFloat; 2],
 }
 
 impl FloatFitter {
     /// Create a new `FloatFitter`
-    fn new(bfc_width: f32, slot_height: f32, cb_insets: [f32; 2]) -> Self {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn new(bfc_width: LayoutFloat, slot_height: LayoutFloat, cb_insets: [LayoutFloat; 2]) -> Self {
         Self { bfc_width, slot_height: slot_height as f64, float_insets: [0.0, 0.0], cb_insets }
     }
 
     // Horizontal fitting
 
     /// Union the insets of another segment. This is a "max" of the insets on each side.
-    fn union_insets(&mut self, insets: [f32; 2]) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn union_insets(&mut self, insets: [LayoutFloat; 2]) {
         self.float_insets[0] = self.float_insets[0].max(insets[0]);
         self.float_insets[1] = self.float_insets[1].max(insets[1]);
     }
 
     /// The inset from the edge of the BFC (on the side the box is floated towards) that the
     /// box would be placed at given the currently accounted for insets
-    fn placed_inset(&self, direction: FloatDirection) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn placed_inset(&self, direction: FloatDirection) -> LayoutFloat {
         let lead = direction as usize;
         self.float_insets[lead].max(self.cb_insets[lead])
     }
@@ -189,19 +216,22 @@ impl FloatFitter {
     /// such that the box fits horizontally.
     ///
     /// See [`float_fits_horizontally`] for the details of the fit rules.
-    fn fits_horiontally(&self, width: f32, direction: FloatDirection) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn fits_horiontally(&self, width: LayoutFloat, direction: FloatDirection) -> bool {
         float_fits_horizontally(width, direction, self.bfc_width, self.float_insets, self.cb_insets)
     }
 
     // Vertical fitting
 
     /// Add the height of another segment.
-    fn add_height(&mut self, height: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn add_height(&mut self, height: LayoutFloat) {
         self.slot_height += height as f64;
     }
 
     /// Given the currently accounted for height, check whether the box fits vertically
-    fn fits_vertically(&mut self, height: f32) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn fits_vertically(&mut self, height: LayoutFloat) -> bool {
         self.slot_height >= height as f64
     }
 }
@@ -211,7 +241,8 @@ impl FloatFitter {
 pub struct FloatContext {
     /// The available space constraint that applies to the root Block Formatting Context
     /// for which this `FloatContext` manages floats.
-    available_width: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    available_width: LayoutFloat,
     /// Whether the float context contains any floats
     has_floats: bool,
     /// A list of left-floated boxes within the context
@@ -226,10 +257,12 @@ pub struct FloatContext {
     last_placed_floats: [Range<usize>; 2],
     /// The bottom (y + height) of the lowest float placed on each side, including
     /// zero-sized floats (which occupy no segment). Left in slot 0, right in slot 1.
-    clear_bottoms: [Option<f32>; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    clear_bottoms: [Option<LayoutFloat>; 2],
     /// The topmost y position allowed for a new float (CSS2 float rule 5), including
     /// the tops of zero-sized floats (which occupy no segment)
-    float_ceiling: Option<f32>,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    float_ceiling: Option<LayoutFloat>,
     // Left hwm in slot 0. Right hwm in slot 1.
     // high_water_marks: [usize; 2],
     // left_float_high_water_mark: usize,
@@ -265,12 +298,14 @@ impl FloatContext {
 
     /// Whether the float context contains any floats that extend to or below min_y
     #[inline(always)]
-    pub fn has_active_floats(&self, min_y: f32) -> bool {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn has_active_floats(&self, min_y: LayoutFloat) -> bool {
         self.has_floats && self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0) > min_y
     }
 
     /// Set the width of the `FloatContext`
-    pub fn set_width(&mut self, available_width: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn set_width(&mut self, available_width: LayoutFloat) {
         self.available_width = available_width;
     }
 
@@ -286,7 +321,8 @@ impl FloatContext {
 
     /// Divide a segment into two segments so that a new float can be placed and have it's
     /// vertical start and end at exact segment boundaries
-    fn subdivide_segment(&mut self, idx: usize, divide_at_y: f32) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    fn subdivide_segment(&mut self, idx: usize, divide_at_y: LayoutFloat) {
         let old_segment = &mut self.segments[idx];
         let new_segment =
             Segment { insets: old_segment.insets, has_float: old_segment.has_float, y: divide_at_y..old_segment.y.end };
@@ -310,12 +346,14 @@ impl FloatContext {
     /// Position a floated box with the context, returning the (x, y) coordinates
     pub fn place_floated_box(
         &mut self,
-        floated_box: Size<f32>,
-        min_y: f32,
-        containing_block_insets: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        floated_box: Size<LayoutFloat>,
+        min_y: LayoutFloat,
+        containing_block_insets: [LayoutFloat; 2],
         direction: FloatDirection,
         clear: Clear,
-    ) -> Point<f32> {
+        // VIPER-PATCH(layout-float-alias): the alias.
+    ) -> Point<LayoutFloat> {
         self.has_floats = true;
 
         let placed_floated_box =
@@ -344,9 +382,10 @@ impl FloatContext {
     /// Inner implementation of float placement, split into a separate function so that it can early-return
     fn place_floated_box_inner(
         &mut self,
-        floated_box: Size<f32>,
-        min_y: f32,
-        containing_block_insets: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        floated_box: Size<LayoutFloat>,
+        min_y: LayoutFloat,
+        containing_block_insets: [LayoutFloat; 2],
         direction: FloatDirection,
         clear: Clear,
     ) -> PlacedFloatedBox {
@@ -357,8 +396,9 @@ impl FloatContext {
         // earlier float) and `clear` (which clears past the bottom of floats on the
         // relevant side, regardless of their width)
         let min_y = min_y
-            .max(self.float_ceiling.unwrap_or(f32::NEG_INFINITY))
-            .max(self.cleared_threshold(clear).unwrap_or(f32::NEG_INFINITY));
+            // VIPER-PATCH(layout-float-alias): the alias.
+            .max(self.float_ceiling.unwrap_or(LayoutFloat::NEG_INFINITY))
+            .max(self.cleared_threshold(clear).unwrap_or(LayoutFloat::NEG_INFINITY));
 
         // Ensure that float:
         //    - Starts at or after the last placed float in either direction (CSS2 float rule 5:
@@ -578,7 +618,8 @@ impl FloatContext {
     }
 
     /// Get the bottom of lowest relevant float for the specific clear property
-    pub fn cleared_threshold(&self, clear: Clear) -> Option<f32> {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn cleared_threshold(&self, clear: Clear) -> Option<LayoutFloat> {
         match clear {
             Clear::Left => self.clear_bottoms[0],
             Clear::Right => self.clear_bottoms[1],
@@ -593,8 +634,9 @@ impl FloatContext {
     /// Search for a space suitable for laying out non-floated content into
     pub fn find_content_slot(
         &self,
-        min_y: f32,
-        containing_block_insets: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        min_y: LayoutFloat,
+        containing_block_insets: [LayoutFloat; 2],
         clear: Clear,
         after: Option<usize>,
     ) -> ContentSlot {
@@ -604,13 +646,15 @@ impl FloatContext {
                 x: containing_block_insets[0],
                 y: min_y,
                 width: self.available_width - containing_block_insets[0] - containing_block_insets[1],
-                height: f32::INFINITY,
+                // VIPER-PATCH(layout-float-alias): the alias.
+                height: LayoutFloat::INFINITY,
             };
         }
 
         // Clearance clears past the bottom of floats on the relevant side, including
         // zero-sized floats which occupy no segment
-        let min_y = min_y.max(self.cleared_threshold(clear).unwrap_or(f32::NEG_INFINITY));
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let min_y = min_y.max(self.cleared_threshold(clear).unwrap_or(LayoutFloat::NEG_INFINITY));
 
         // The min starting segment index
         let at_least = after.map(|idx| idx + 1).unwrap_or(0);
@@ -631,7 +675,8 @@ impl FloatContext {
                     x: inset_left,
                     y: segment.y.start.max(min_y),
                     width: self.available_width - inset_left - inset_right,
-                    height: f32::INFINITY,
+                    // VIPER-PATCH(layout-float-alias): the alias.
+                    height: LayoutFloat::INFINITY,
                 }
             }
             None => ContentSlot {
@@ -639,7 +684,8 @@ impl FloatContext {
                 x: containing_block_insets[0],
                 y: min_y,
                 width: self.available_width - containing_block_insets[0] - containing_block_insets[1],
-                height: f32::INFINITY,
+                // VIPER-PATCH(layout-float-alias): the alias.
+                height: LayoutFloat::INFINITY,
             },
         }
     }
@@ -666,9 +712,10 @@ impl FloatContext {
     /// When there are no floats beside the box, its (possibly negative) margins apply as usual.
     pub fn find_bfc_slot(
         &self,
-        min_y: f32,
-        containing_block_insets: [f32; 2],
-        margins: [f32; 2],
+        // VIPER-PATCH(layout-float-alias): the alias.
+        min_y: LayoutFloat,
+        containing_block_insets: [LayoutFloat; 2],
+        margins: [LayoutFloat; 2],
         direction: Direction,
         clear: Clear,
         after: Option<usize>,
@@ -689,7 +736,8 @@ impl FloatContext {
 
         // Clearance clears past the bottom of floats on the relevant side, including
         // zero-sized floats which occupy no segment
-        let min_y = min_y.max(self.cleared_threshold(clear).unwrap_or(f32::NEG_INFINITY));
+        // VIPER-PATCH(layout-float-alias): the alias.
+        let min_y = min_y.max(self.cleared_threshold(clear).unwrap_or(LayoutFloat::NEG_INFINITY));
 
         // The min starting segment index
         let at_least = after.map(|idx| idx + 1).unwrap_or(0);
@@ -748,11 +796,14 @@ pub struct FloatIntrinsicWidthCalculator {
     /// The available width of the container
     available_width: AvailableSpace,
     /// The running sums of the widths of adjacent uncleared floats on each side (left, right)
-    side_sums: [f32; 2],
+    // VIPER-PATCH(layout-float-alias): the alias.
+    side_sums: [LayoutFloat; 2],
     /// The running total intrinsic width contribution
-    contribution: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    contribution: LayoutFloat,
     /// The widest single float (the floats' min-content contribution)
-    widest: f32,
+    // VIPER-PATCH(layout-float-alias): the alias.
+    widest: LayoutFloat,
 }
 
 impl FloatIntrinsicWidthCalculator {
@@ -762,7 +813,8 @@ impl FloatIntrinsicWidthCalculator {
     }
 
     /// Add a float to the computation
-    pub fn add_float(&mut self, width: f32, direction: FloatDirection, clear: Clear) {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn add_float(&mut self, width: LayoutFloat, direction: FloatDirection, clear: Clear) {
         match self.available_width {
             // Definite available width means the container is being fit-content sized
             // (e.g. it is itself a float being shrink-to-fit sized). The floats' max-content
@@ -785,7 +837,8 @@ impl FloatIntrinsicWidthCalculator {
     }
 
     /// Get the computed float contribution to intrinsic width
-    pub fn result(&self) -> f32 {
+    // VIPER-PATCH(layout-float-alias): the alias.
+    pub fn result(&self) -> LayoutFloat {
         match self.available_width {
             // Fit-content sizing: clamp the max-content contribution between the available
             // width and the min-content contribution (floats narrow by wrapping onto new

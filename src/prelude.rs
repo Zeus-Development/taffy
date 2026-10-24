@@ -14,6 +14,9 @@ pub use crate::{
     tree::{Layout, LayoutPartialTree, NodeId, PrintTree, RoundTree, TraversePartialTree, TraverseTree},
 };
 
+// VIPER-PATCH(layout-float-alias): the alias.
+pub use crate::LayoutFloat;
+
 #[cfg(feature = "flexbox")]
 pub use crate::style::{FlexDirection, FlexWrap};
 
