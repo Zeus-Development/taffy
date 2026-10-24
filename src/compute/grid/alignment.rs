@@ -15,6 +15,8 @@ use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 
 #[cfg(feature = "content_size")]
 use crate::compute::common::scrollable_overflow::compute_scrollable_overflow_contribution;
+// VIPER-PATCH(scroll-last-baseline): the shared baseline code.
+use crate::compute::common::containment::last_baseline_at_margin_edge;
 use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::{AbsoluteAxis, BoxSizing, Direction, LayoutGridContainer};
 
@@ -109,6 +111,8 @@ pub(super) fn align_and_position_item(
     let style = tree.get_grid_child_style(node);
 
     let overflow = style.overflow();
+    // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+    let last_baseline_at_margin_edge = last_baseline_at_margin_edge(&style);
     #[cfg(feature = "content_size")]
     let contain = style.contain();
     let scrollbar_width = style.scrollbar_width();
@@ -463,8 +467,10 @@ pub(super) fn align_and_position_item(
             baseline
         }
     };
-    let baselines =
-        Baselines { first: clamp(layout_output.baselines.first), last: clamp(layout_output.baselines.last) };
+    // VIPER-PATCH(scroll-last-baseline): a last baseline at the block-end margin edge (CSS Box Alignment 3 §9.1).
+    let last =
+        if last_baseline_at_margin_edge { Some(height + y_margin.end) } else { clamp(layout_output.baselines.last) };
+    let baselines = Baselines { first: clamp(layout_output.baselines.first), last };
 
     (contribution, Point { x, y }, Size { width, height }, baselines)
 }

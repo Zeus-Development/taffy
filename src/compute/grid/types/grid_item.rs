@@ -1,5 +1,7 @@
 //! Contains GridItem used to represent a single grid item during layout
 use super::GridTrack;
+// VIPER-PATCH(scroll-last-baseline): the shared baseline code.
+use crate::compute::common::containment::last_baseline_at_margin_edge;
 use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::compute::grid::OriginZeroLine;
 use crate::geometry::AbstractAxis;
@@ -44,6 +46,9 @@ pub(in super::super) struct GridItem {
     pub is_replaced: bool,
     /// The item's overflow style
     pub overflow: Point<Overflow>,
+    /// Whether the item's last baseline is its block-end margin edge
+    // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+    pub last_baseline_at_margin_edge: bool,
     /// The item's box_sizing style
     pub box_sizing: BoxSizing,
     /// The item's size style
@@ -135,6 +140,8 @@ impl GridItem {
             is_compressible_replaced: style.is_compressible_replaced(),
             is_replaced: style.is_replaced(),
             overflow: style.overflow(),
+            // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+            last_baseline_at_margin_edge: last_baseline_at_margin_edge(&style),
             box_sizing: style.box_sizing(),
             size: style.size(),
             min_size: style.min_size(),

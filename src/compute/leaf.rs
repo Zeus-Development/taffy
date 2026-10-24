@@ -1,5 +1,7 @@
 //! Computes size using styles and measure functions
 
+// VIPER-PATCH(size-containment): the shared containment code.
+use crate::compute::common::containment::size_contained_inputs;
 #[cfg(feature = "content_size")]
 use crate::geometry::Rect;
 use crate::geometry::Size;
@@ -18,6 +20,25 @@ use core::unreachable;
 /// A definite `inputs.available_space` is treated as the space available to the node's border box:
 /// the caller is expected to have already subtracted the node's margins from it.
 pub fn compute_leaf_layout<MeasureFunction>(
+    inputs: LayoutInput,
+    style: &impl CoreStyle,
+    resolve_calc_value: impl Fn(*const (), f32) -> f32,
+    measure_function: MeasureFunction,
+) -> LayoutOutput
+where
+    MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> Size<f32>,
+{
+    // VIPER-PATCH(size-containment): a size-contained leaf is sized as if it had no content, without calling
+    // the measure function, and then measured in that size.
+    let inputs = size_contained_inputs(style.contain(), inputs, |inputs| {
+        leaf_layout(inputs, style, &resolve_calc_value, |_, _| Size::ZERO)
+    });
+    leaf_layout(inputs, style, resolve_calc_value, measure_function)
+}
+
+/// The leaf algorithm, after containment
+// VIPER-PATCH(size-containment): the leaf algorithm, after containment.
+fn leaf_layout<MeasureFunction>(
     inputs: LayoutInput,
     style: &impl CoreStyle,
     resolve_calc_value: impl Fn(*const (), f32) -> f32,

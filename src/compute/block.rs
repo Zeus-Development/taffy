@@ -1,4 +1,6 @@
 //! Computes the CSS block layout algorithm in the case that the block container being laid out contains only block-level boxes
+// VIPER-PATCH(size-containment): the shared containment and baseline code.
+use crate::compute::common::containment::{last_baseline_at_margin_edge, size_contained_inputs};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
     AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace,
@@ -330,6 +332,9 @@ struct BlockItem {
     overflow: Point<Overflow>,
     /// The contain style of the item
     contain: Contain,
+    /// Whether the item's last baseline is its block-end margin edge
+    // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+    last_baseline_at_margin_edge: bool,
     /// The width of the item's scrollbars (if it has scrollbars)
     scrollbar_width: f32,
 
@@ -376,6 +381,22 @@ pub fn compute_block_layout(
     node_id: NodeId,
     inputs: LayoutInput,
     block_ctx: Option<&mut BlockContext<'_>>,
+) -> LayoutOutput {
+    // VIPER-PATCH(size-containment): a size-contained block container is sized as if it had no children, in a
+    // formatting context of its own, then lays them out in that size.
+    let contain = tree.get_block_container_style(node_id).contain();
+    let inputs = size_contained_inputs(contain, inputs, |inputs| block_layout(tree, node_id, inputs, None, true));
+    block_layout(tree, node_id, inputs, block_ctx, false)
+}
+
+/// The block algorithm, after containment; `as_if_empty` lays the box out without its children
+// VIPER-PATCH(size-containment): the block algorithm, after containment.
+fn block_layout(
+    tree: &mut impl LayoutBlockContainer,
+    node_id: NodeId,
+    inputs: LayoutInput,
+    block_ctx: Option<&mut BlockContext<'_>>,
+    as_if_empty: bool,
 ) -> LayoutOutput {
     let LayoutInput { known_dimensions, parent_size, run_mode, .. } = inputs;
     let style = tree.get_block_container_style(node_id);
@@ -453,6 +474,8 @@ pub fn compute_block_layout(
             node_id,
             LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
             inherited_bfc,
+            // VIPER-PATCH(size-containment): with or without the children.
+            as_if_empty,
         ),
         _ => {
             let mut root_bfc = BlockFormattingContext::new();
@@ -462,6 +485,8 @@ pub fn compute_block_layout(
                 node_id,
                 LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs },
                 &mut root_ctx,
+                // VIPER-PATCH(size-containment): with or without the children.
+                as_if_empty,
             )
         }
     };
@@ -480,6 +505,8 @@ fn compute_inner(
     node_id: NodeId,
     inputs: LayoutInput,
     #[allow(unused_mut)] mut block_ctx: &mut BlockContext<'_>,
+    // VIPER-PATCH(size-containment): whether to lay the box out without its children.
+    as_if_empty: bool,
 ) -> LayoutOutput {
     let LayoutInput {
         known_dimensions, parent_size, available_space, run_mode, vertical_margins_are_collapsible, ..
@@ -591,7 +618,9 @@ fn compute_inner(
     drop(style);
 
     // 1. Generate items
-    let mut items = generate_item_list(tree, node_id, container_content_box_size);
+    // VIPER-PATCH(size-containment): none when sized as if empty.
+    let mut items =
+        if as_if_empty { Vec::new() } else { generate_item_list(tree, node_id, container_content_box_size) };
 
     // 2. Compute container width
     let container_outer_width = known_dimensions.width.unwrap_or_else(|| {
@@ -949,6 +978,8 @@ fn generate_item_list(
                     .maybe_add(box_sizing_adjustment),
                 overflow,
                 contain,
+                // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+                last_baseline_at_margin_edge: last_baseline_at_margin_edge(&child_style),
                 scrollbar_width: child_style.scrollbar_width(),
                 position,
                 direction: child_style.direction(),
@@ -1710,7 +1741,14 @@ fn perform_final_layout_on_in_flow_children(
             if baselines.first.is_none() {
                 baselines.first = child_baseline(item_layout.baselines.first);
             }
-            baselines.last = child_baseline(item_layout.baselines.last).or(baselines.last);
+            // VIPER-PATCH(scroll-last-baseline): a block container that is a block-axis scroll container with
+            // `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1).
+            let last = if item.last_baseline_at_margin_edge {
+                Some(location.y + item_layout.size.height + resolved_margin.bottom)
+            } else {
+                child_baseline(item_layout.baselines.last)
+            };
+            baselines.last = last.or(baselines.last);
 
             // Used auto margins include float-avoidance offsets, unlike the alignment margins above.
             #[cfg(feature = "float_layout")]

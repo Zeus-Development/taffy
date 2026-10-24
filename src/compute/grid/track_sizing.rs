@@ -549,7 +549,11 @@ fn resolve_baseline_group_shims(
             // Scroll containers' baselines are determined from their content as if scrolled to the
             // initial position, but are additionally clamped to their border box.
             // See https://github.com/w3c/csswg-drafts/issues/7660
-            let baseline = if item.overflow.y.is_scroll_container() {
+            // VIPER-PATCH(scroll-last-baseline): a last baseline at the block-end margin edge (CSS Box Alignment 3
+            // §9.1), with no descent below it.
+            let baseline = if last && item.last_baseline_at_margin_edge {
+                height + item.margin.bottom.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+            } else if item.overflow.y.is_scroll_container() {
                 baseline.unwrap_or(height).min(height).max(0.0)
             } else {
                 baseline.unwrap_or(height)

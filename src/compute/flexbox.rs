@@ -1,5 +1,7 @@
 //! Computes the [flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) layout algorithm on [`TaffyTree`](crate::TaffyTree) according to the [spec](https://www.w3.org/TR/css-flexbox-1/)
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
+// VIPER-PATCH(size-containment): the shared containment and baseline code.
+use crate::compute::common::containment::{last_baseline_at_margin_edge, size_contained_inputs};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
     AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, Contain,
@@ -61,6 +63,9 @@ struct FlexItem {
     overflow: Point<Overflow>,
     /// The contain style of the item
     contain: Contain,
+    /// Whether the item's last baseline is its block-end margin edge
+    // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+    last_baseline_at_margin_edge: bool,
     /// The width of the scrollbars (if it has any)
     scrollbar_width: f32,
     /// The flex shrink style of the item
@@ -302,6 +307,21 @@ pub fn compute_flexbox_layout(
     node: NodeId,
     inputs: LayoutInput,
 ) -> LayoutOutput {
+    // VIPER-PATCH(size-containment): a size-contained flex container is sized as if it had no items, then
+    // lays them out in that size.
+    let contain = tree.get_flexbox_container_style(node).contain();
+    let inputs = size_contained_inputs(contain, inputs, |inputs| flexbox_layout(tree, node, inputs, true));
+    flexbox_layout(tree, node, inputs, false)
+}
+
+/// The flexbox algorithm, after containment; `as_if_empty` lays the box out without its items
+// VIPER-PATCH(size-containment): the flexbox algorithm, after containment.
+fn flexbox_layout(
+    tree: &mut impl LayoutFlexboxContainer,
+    node: NodeId,
+    inputs: LayoutInput,
+    as_if_empty: bool,
+) -> LayoutOutput {
     let LayoutInput { known_dimensions, parent_size, run_mode, .. } = inputs;
     let style = tree.get_flexbox_container_style(node);
 
@@ -381,6 +401,8 @@ pub fn compute_flexbox_layout(
         tree,
         node,
         LayoutInput { known_dimensions: styled_based_known_dimensions, known_dimensions_are_definite, ..inputs },
+        // VIPER-PATCH(size-containment): with or without the items.
+        as_if_empty,
     );
 
     // Layout containment suppresses the box's baseline for baseline-alignment purposes
@@ -392,7 +414,13 @@ pub fn compute_flexbox_layout(
 }
 
 /// Compute a preliminary size for an item
-fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
+// VIPER-PATCH(size-containment): `as_if_empty` lays the box out without its items.
+fn compute_preliminary(
+    tree: &mut impl LayoutFlexboxContainer,
+    node: NodeId,
+    inputs: LayoutInput,
+    as_if_empty: bool,
+) -> LayoutOutput {
     let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 
     // Define some general constants we will need for the remainder of the algorithm.
@@ -411,7 +439,8 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // 1. Generate anonymous flex items as described in §4 Flex Items.
     debug_log!("generate_anonymous_flex_items");
-    let mut flex_items = generate_anonymous_flex_items(tree, node, &constants);
+    // VIPER-PATCH(size-containment): none when sized as if empty.
+    let mut flex_items = if as_if_empty { Vec::new() } else { generate_anonymous_flex_items(tree, node, &constants) };
 
     // 9.2. Line Length Determination
 
@@ -877,6 +906,8 @@ fn generate_anonymous_flex_items(
                 align_self: resolve_normal_alignment(child_style.align_self().unwrap_or(constants.align_items))
                     .resolve_self_relative(child_style.direction(), constants.layout_direction, constants.is_column),
                 overflow: child_style.overflow(),
+                // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
+                last_baseline_at_margin_edge: last_baseline_at_margin_edge(&child_style),
                 contain: child_style.contain(),
                 scrollbar_width: child_style.scrollbar_width(),
                 flex_grow: child_style.flex_grow(),
@@ -2206,7 +2237,11 @@ fn calculate_children_base_lines(
             // Scroll containers' baselines are determined from their content as if scrolled to the
             // initial position, but are additionally clamped to their border box.
             // See https://github.com/w3c/csswg-drafts/issues/7660
-            let baseline = if child.overflow.y.is_scroll_container() {
+            // VIPER-PATCH(scroll-last-baseline): except a last baseline at the block-end margin edge (CSS Box
+            // Alignment 3 §9.1).
+            let baseline = if is_last_baseline && child.last_baseline_at_margin_edge {
+                height + child.margin.bottom
+            } else if child.overflow.y.is_scroll_container() {
                 baseline.unwrap_or(height).min(height).max(0.0)
             } else {
                 baseline.unwrap_or(height)
@@ -2779,14 +2814,22 @@ fn calculate_flex_item(
             }
         };
         item.baseline = baseline_offset_cross + inner_baseline(layout_output.baselines.first);
-        item.last_baseline = baseline_offset_cross + inner_baseline(layout_output.baselines.last);
-        item.has_last_baseline = layout_output.baselines.last.is_some();
+        // VIPER-PATCH(scroll-last-baseline): a last baseline at the block-end margin edge (CSS Box Alignment 3 §9.1).
+        if item.last_baseline_at_margin_edge {
+            item.last_baseline = baseline_offset_cross + size.height + item.margin.bottom;
+            item.has_last_baseline = true;
+        } else {
+            item.last_baseline = baseline_offset_cross + inner_baseline(layout_output.baselines.last);
+            item.has_last_baseline = layout_output.baselines.last.is_some();
+        }
     } else {
         let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
         let inner_baseline = layout_output.baselines.first.unwrap_or(size.height);
         item.baseline = baseline_offset_main + inner_baseline;
         // VIPER-PATCH(last-baseline): the item's last baseline too.
-        item.last_baseline = baseline_offset_main + layout_output.baselines.last.unwrap_or(size.height);
+        // VIPER-PATCH(scroll-last-baseline): at the block-end margin edge where CSS Box Alignment 3 §9.1 puts it.
+        let last = if item.last_baseline_at_margin_edge { Some(size.height + item.margin.bottom) } else { None };
+        item.last_baseline = baseline_offset_main + last.or(layout_output.baselines.last).unwrap_or(size.height);
     }
 
     let location = if direction.is_row() {

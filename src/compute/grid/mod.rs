@@ -1,5 +1,7 @@
 //! This module is a partial implementation of the CSS Grid Level 1 specification
 //! <https://www.w3.org/TR/css-grid-1>
+// VIPER-PATCH(size-containment): the shared containment code.
+use crate::compute::common::containment::size_contained_inputs;
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{AlignContent, AlignItems, AvailableSpace, Contain, ContainingBlockClaims, Overflow};
@@ -221,6 +223,21 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     node: NodeId,
     inputs: LayoutInput,
 ) -> LayoutOutput {
+    // VIPER-PATCH(size-containment): a size-contained grid container is sized as if it had no items (its
+    // explicit tracks still size it), then lays them out in that size.
+    let contain = tree.get_grid_container_style(node).contain();
+    let inputs = size_contained_inputs(contain, inputs, |inputs| grid_layout(tree, node, inputs, true));
+    grid_layout(tree, node, inputs, false)
+}
+
+/// The grid algorithm, after containment; `as_if_empty` lays the box out without its items
+// VIPER-PATCH(size-containment): the grid algorithm, after containment.
+fn grid_layout<Tree: LayoutGridContainer>(
+    tree: &mut Tree,
+    node: NodeId,
+    inputs: LayoutInput,
+    as_if_empty: bool,
+) -> LayoutOutput {
     let LayoutInput { known_dimensions, run_mode, .. } = inputs;
 
     let style = tree.get_grid_container_style(node);
@@ -334,10 +351,12 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // Absolutely positioned children do not take part in grid placement and do not create implicit tracks,
     // so they are excluded here. Each child's style is read and its named lines resolved exactly once; the
     // results drive both the grid size estimate and item placement below.
-    let child_count = tree.child_count(node);
+    // VIPER-PATCH(size-containment): none when sized as if empty.
+    let child_count = if as_if_empty { 0 } else { tree.child_count(node) };
     let mut items: Vec<GridItem> = Vec::with_capacity(child_count);
     let mut placements: Vec<ItemPlacement> = Vec::with_capacity(child_count);
-    for (index, child_node) in tree.child_ids(node).enumerate() {
+    // VIPER-PATCH(size-containment): no child when sized as if empty.
+    for (index, child_node) in tree.child_ids(node).enumerate().take(child_count) {
         let child_style = tree.get_grid_child_style(child_node);
         if child_style.box_generation_mode() == BoxGenerationMode::None || child_style.position().is_out_of_flow() {
             continue;
