@@ -2,6 +2,7 @@
 use taffy::geometry::Point;
 use taffy::prelude::*;
 use taffy::style::{Clear, Direction, Float};
+use taffy::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 use taffy_test_helpers::new_test_tree;
 
 /// Regression test for <https://wpt.live/css/CSS2/floats-clear/floats-146.xht>
@@ -14,7 +15,8 @@ use taffy_test_helpers::new_test_tree;
 fn float_no_higher_than_earlier_floats() {
     let mut taffy = new_test_tree();
 
-    let block = |width: f32, height: f32, float: Float| Style {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    let block = |width: LayoutFloat, height: LayoutFloat, float: Float| Style {
         display: Display::Block,
         float,
         size: Size { width: length(width), height: length(height) },
@@ -99,7 +101,8 @@ fn clear_past_zero_width_float() {
     assert_eq!(taffy.layout(container).unwrap().size.height, 100.0);
 }
 
-fn float_block(width: f32, height: f32, float: Float) -> Style {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn float_block(width: LayoutFloat, height: LayoutFloat, float: Float) -> Style {
     Style {
         display: Display::Block,
         float,
@@ -108,7 +111,8 @@ fn float_block(width: f32, height: f32, float: Float) -> Style {
     }
 }
 
-fn root_style(width: f32) -> Style {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn root_style(width: LayoutFloat) -> Style {
     Style { display: Display::Block, size: Size { width: length(width), height: auto() }, ..Default::default() }
 }
 
@@ -197,11 +201,13 @@ fn auto_margins_include_float_avoidance_offsets() {
             for (index, (&node, &(left_auto, right_auto))) in boxes.iter().zip(&auto_sides).enumerate() {
                 let layout = taffy.layout(node).unwrap();
                 let free_space = 90.0 - left_float_width - right_float_width - 40.0;
-                let alignment_margin = free_space / (u8::from(left_auto) + u8::from(right_auto)) as f32;
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                let alignment_margin = free_space / (u8::from(left_auto) + u8::from(right_auto)) as LayoutFloat;
                 let left_gap = if left_auto { alignment_margin } else { 0.0 };
                 assert_eq!(
                     layout.location,
-                    Point { x: 5.0 + left_float_width + left_gap, y: 5.0 + index as f32 * 10.0 }
+                    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                    Point { x: 5.0 + left_float_width + left_gap, y: 5.0 + index as LayoutFloat * 10.0 }
                 );
                 assert_eq!(layout.size, Size { width: 40.0, height: 10.0 });
                 assert_eq!(layout.margin.left, if left_auto { left_float_width + alignment_margin } else { 0.0 });

@@ -560,7 +560,8 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
     let align_self =
         child_style.align_self().unwrap_or(AlignSelf::NORMAL).resolve_self_relative(item_direction, direction, false);
     let overflow = child_style.overflow();
-    let scrollbar_width = child_style.scrollbar_width();
+    // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+    let scrollbar_width = LayoutFloat::from(child_style.scrollbar_width());
     #[cfg(feature = "content_size")]
     let contain = child_style.contain();
 
@@ -878,9 +879,11 @@ mod tests {
     use crate::geometry::{Line, Point, Rect, Size};
     use crate::style::AlignmentSafety;
     use crate::tree::{AxisStaticAlign, AxisStaticEdge, AxisStaticPosition};
+    use crate::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 
     fn sp(
-        area: Line<f32>,
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        area: Line<LayoutFloat>,
         keyword: AxisStaticEdge,
         safety: AlignmentSafety,
         fallback: AxisStaticEdge,
@@ -888,14 +891,16 @@ mod tests {
         AxisStaticPosition { area, align: AxisStaticAlign { keyword, safety, fallback } }
     }
 
-    fn resolve_x(sp_x: AxisStaticPosition, width: f32, margin: Rect<f32>) -> f32 {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn resolve_x(sp_x: AxisStaticPosition, width: LayoutFloat, margin: Rect<LayoutFloat>) -> LayoutFloat {
         let position = Point { x: sp_x, y: AxisStaticPosition::from_edge(0.0, AxisStaticEdge::Start) };
         resolve_static_offset(position, Size { width, height: 10.0 }, margin).x
     }
 
-    const AREA: Line<f32> = Line { start: 10.0, end: 110.0 };
-    const NO_MARGIN: Rect<f32> = Rect { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 };
-    const MARGIN: Rect<f32> = Rect { left: 5.0, right: 15.0, top: 0.0, bottom: 0.0 };
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    const AREA: Line<LayoutFloat> = Line { start: 10.0, end: 110.0 };
+    const NO_MARGIN: Rect<LayoutFloat> = Rect { left: 0.0, right: 0.0, top: 0.0, bottom: 0.0 };
+    const MARGIN: Rect<LayoutFloat> = Rect { left: 5.0, right: 15.0, top: 0.0, bottom: 0.0 };
 
     #[test]
     fn start_alignment() {

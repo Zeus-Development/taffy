@@ -41,10 +41,12 @@ pub(crate) fn resolve_sizing_keyword(
         CompactLength::MIN_CONTENT_TAG => Some(SizingKeywordResolution::Measure(AvailableSpace::MinContent)),
         CompactLength::MAX_CONTENT_TAG => Some(SizingKeywordResolution::Measure(AvailableSpace::MaxContent)),
         CompactLength::FIT_CONTENT_PX_TAG => {
-            Some(SizingKeywordResolution::Measure(AvailableSpace::Definite(style.value())))
+            // VIPER-PATCH(layout-f64): the style value widened to a layout number.
+            Some(SizingKeywordResolution::Measure(AvailableSpace::Definite(style.0.layout_value())))
         }
         CompactLength::FIT_CONTENT_PERCENT_TAG => percent_resolution_basis
-            .map(|basis| SizingKeywordResolution::Measure(AvailableSpace::Definite(basis * style.value()))),
+            // VIPER-PATCH(layout-f64): a percentage of a layout number, as a single-precision product.
+            .map(|basis| SizingKeywordResolution::Measure(AvailableSpace::Definite(style.0.percent_of(basis)))),
         CompactLength::FIT_CONTENT_KEYWORD_TAG => {
             stretch_size.map(|size| SizingKeywordResolution::Measure(AvailableSpace::Definite(size)))
         }

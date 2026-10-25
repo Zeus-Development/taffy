@@ -192,7 +192,8 @@ impl FloatFitter {
     /// Create a new `FloatFitter`
     // VIPER-PATCH(layout-float-alias): the alias.
     fn new(bfc_width: LayoutFloat, slot_height: LayoutFloat, cb_insets: [LayoutFloat; 2]) -> Self {
-        Self { bfc_width, slot_height: slot_height as f64, float_insets: [0.0, 0.0], cb_insets }
+        // VIPER-PATCH(layout-f64): a layout number is already an f64.
+        Self { bfc_width, slot_height, float_insets: [0.0, 0.0], cb_insets }
     }
 
     // Horizontal fitting
@@ -226,13 +227,15 @@ impl FloatFitter {
     /// Add the height of another segment.
     // VIPER-PATCH(layout-float-alias): the alias.
     fn add_height(&mut self, height: LayoutFloat) {
-        self.slot_height += height as f64;
+        // VIPER-PATCH(layout-f64): a layout number is already an f64.
+        self.slot_height += height;
     }
 
     /// Given the currently accounted for height, check whether the box fits vertically
     // VIPER-PATCH(layout-float-alias): the alias.
     fn fits_vertically(&mut self, height: LayoutFloat) -> bool {
-        self.slot_height >= height as f64
+        // VIPER-PATCH(layout-f64): a layout number is already an f64.
+        self.slot_height >= height
     }
 }
 

@@ -19,7 +19,8 @@ mod flex_line_count {
         }
     }
 
-    fn measure_text_child(flex_wrap: FlexWrap) -> Size<f32> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn measure_text_child(flex_wrap: FlexWrap) -> Size<taffy::LayoutFloat> {
         let mut taffy = new_test_tree();
         let text = TestNodeContext::ahem_text(TEXT.to_string(), WritingMode::Horizontal);
         let child = taffy.new_leaf_with_context(Style::default(), text).unwrap();
@@ -47,7 +48,8 @@ mod flex_line_count {
         assert_eq!(measure_text_child(FlexWrap::NoWrap), Size { width: 210.0, height: 20.0 });
     }
 
-    fn measure_fit_content_child(flex_wrap: FlexWrap) -> Size<f32> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn measure_fit_content_child(flex_wrap: FlexWrap) -> Size<taffy::LayoutFloat> {
         let mut taffy = new_test_tree();
         let text = TestNodeContext::ahem_text(TEXT.to_string(), WritingMode::Horizontal);
         let child_style =

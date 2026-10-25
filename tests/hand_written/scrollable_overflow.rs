@@ -6,17 +6,20 @@
 use taffy::geometry::Point;
 use taffy::prelude::*;
 use taffy::style::{Direction, Display, Overflow, Position};
+use taffy::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 use taffy_test_helpers::new_test_tree;
 
-const CONTAINER: f32 = 200.0;
-const CHILD: f32 = 50.0;
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+const CONTAINER: LayoutFloat = 200.0;
+const CHILD: LayoutFloat = 50.0;
 
 fn container_with_absolute_child(
     display: Display,
     overflow: Overflow,
     direction: Direction,
-    inset_left: Option<f32>,
-    inset_right: Option<f32>,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    inset_left: Option<LayoutFloat>,
+    inset_right: Option<LayoutFloat>,
 ) -> Layout {
     let mut tree = new_test_tree();
     let child = tree

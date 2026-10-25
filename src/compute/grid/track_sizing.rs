@@ -840,7 +840,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                             .filter(|track| !track.is_flexible())
                             .map(|track| track.base_size)
                             .sum();
-                        let scale = f32_min(crossed_flex_factor_sum(spanned_tracks), 1.0);
+                        // VIPER-PATCH(layout-f64): the flex factor sum, a sum of style values, widened.
+                        let scale = f32_min(LayoutFloat::from(crossed_flex_factor_sum(spanned_tracks)), 1.0);
                         let excess = f32_max(limited_min_content - inflexible_sizes, 0.0);
                         f32_max(axis_minimum_size, inflexible_sizes + excess * scale)
                     } else {
@@ -967,7 +968,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                     // VIPER-PATCH(layout-float-alias): the alias.
                     let inflexible_sizes: LayoutFloat =
                         spanned_tracks.iter().filter(|track| !track.is_flexible()).map(|track| track.base_size).sum();
-                    let scale = f32_min(crossed_flex_factor_sum(spanned_tracks), 1.0);
+                    // VIPER-PATCH(layout-f64): the flex factor sum, a sum of style values, widened.
+                    let scale = f32_min(LayoutFloat::from(crossed_flex_factor_sum(spanned_tracks)), 1.0);
                     space = inflexible_sizes + f32_max(space - inflexible_sizes, 0.0) * scale;
                 }
                 let tracks = &mut axis_tracks[item.track_range_excluding_lines(axis)];
@@ -1129,7 +1131,8 @@ fn distribute_item_space_to_base_size(
                 space,
                 tracks,
                 filter,
-                |track| track.flex_factor(),
+                // VIPER-PATCH(layout-f64): the flex factor, a style value, widened.
+                |track| LayoutFloat::from(track.flex_factor()),
                 track_limit,
                 intrinsic_contribution_type,
             )
@@ -1400,7 +1403,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
                     .iter()
                     .filter(|track| track.max_track_sizing_function.is_fr())
                     .map(|track| {
-                        let flex_factor = track.flex_factor();
+                        // VIPER-PATCH(layout-f64): the flex factor, a style value, widened.
+                        let flex_factor = LayoutFloat::from(track.flex_factor());
                         if flex_factor > 1.0 {
                             track.base_size / flex_factor
                         } else {
@@ -1432,7 +1436,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
                 .iter()
                 .map(|track| {
                     if track.max_track_sizing_function.is_fr() {
-                        let track_flex_factor = track.max_track_sizing_function.0.value();
+                        // VIPER-PATCH(layout-f64): the flex factor, a style value, widened.
+                        let track_flex_factor = track.max_track_sizing_function.0.layout_value();
                         f32_max(track.base_size, track_flex_factor * flex_fraction)
                     } else {
                         track.base_size
@@ -1466,21 +1471,25 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
     // each here. Taffy's fr size in px times 64 is exactly Blink's raw fr size (scaling by a power of two commutes
     // with rounding). Blink sizes adjacent tracks that no item edge separates as one set; Taffy has no sets, so the
     // carry runs per track.
-    let fr_size_in_units = flex_fraction * LAYOUT_UNITS_PER_PX;
-    let mut leftover = 0.0;
+    //
+    // VIPER-PATCH(layout-f64): the fr size, the shares and their remainders stay single-precision floats, as this
+    // patch defines them (with `f32::EPSILON`), so a layout number type wider than `f32` does not change them; only
+    // the expanded size, a whole number of layout units, widens to a layout number, exactly.
+    let fr_size_in_units = (flex_fraction * LAYOUT_UNITS_PER_PX) as f32;
+    let mut leftover = 0.0f32;
     for track in axis_tracks.iter_mut().filter(|track| track.max_track_sizing_function.is_fr()) {
         let track_flex_factor = track.max_track_sizing_function.0.value();
         let share = fr_size_in_units * track_flex_factor + leftover;
         // Rust's float-to-int cast truncates toward zero and saturates, as Blink's conversion does.
-        // VIPER-PATCH(layout-float-alias): the alias.
-        let expanded = (share + LayoutFloat::EPSILON) as i32;
+        // VIPER-PATCH(layout-f64): the single-precision epsilon.
+        let expanded = (share + f32::EPSILON) as i32;
         let saturated = expanded == i32::MAX || expanded == i32::MIN;
         // VIPER-PATCH(layout-float-alias): the alias.
         let expanded_size = expanded as LayoutFloat / LAYOUT_UNITS_PER_PX;
         if !saturated && expanded_size >= track.base_size {
             track.base_size = expanded_size;
-            // VIPER-PATCH(layout-float-alias): the alias.
-            leftover = f32_max(share - expanded as LayoutFloat, 0.0);
+            // VIPER-PATCH(layout-f64): the remainder in single precision.
+            leftover = (share - expanded as f32).max(0.0);
         }
     }
 }
@@ -1524,7 +1533,8 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: LayoutFloat) -> LayoutFl
         for track in tracks.iter() {
             // Tracks for which flex_factor * hypothetical_fr_size < track.base_size are treated as inflexible
             if track.max_track_sizing_function.is_fr()
-                && track.max_track_sizing_function.0.value() * hypothetical_fr_size >= track.base_size
+                // VIPER-PATCH(layout-f64): the flex factor, a style value, widened.
+                && track.max_track_sizing_function.0.layout_value() * hypothetical_fr_size >= track.base_size
             {
                 naive_flex_factor_sum += track.max_track_sizing_function.0.value();
             } else {
@@ -1532,7 +1542,8 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: LayoutFloat) -> LayoutFl
             };
         }
         let leftover_space = space_to_fill - used_space;
-        let flex_factor = f32_max(naive_flex_factor_sum, 1.0);
+        // VIPER-PATCH(layout-f64): the flex factor sum, a sum of style values, widened.
+        let flex_factor = f32_max(LayoutFloat::from(naive_flex_factor_sum), 1.0);
 
         // Let the hypothetical fr size be the leftover space divided by the flex factor sum.
         previous_iter_hypothetical_fr_size = hypothetical_fr_size;
@@ -1543,7 +1554,8 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: LayoutFloat) -> LayoutFl
         // We keep track of the hypothetical_fr_size
         let hypothetical_fr_size_is_valid = tracks.iter().all(|track| {
             if track.max_track_sizing_function.is_fr() {
-                let flex_factor = track.max_track_sizing_function.0.value();
+                // VIPER-PATCH(layout-f64): the flex factor, a style value, widened.
+                let flex_factor = track.max_track_sizing_function.0.layout_value();
                 flex_factor * hypothetical_fr_size >= track.base_size
                     || flex_factor * previous_iter_hypothetical_fr_size < track.base_size
             } else {

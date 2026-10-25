@@ -12,51 +12,70 @@ use crate::LayoutFloat;
 /// The number of cache entries for each node in the tree
 const CACHE_SIZE: usize = 9;
 
-// Manually written-out results of float to u32 bit casts because
-// `f32::to_bits` is not yet const at our MSRV.
+// VIPER-PATCH(layout-f64): a layout number is an f64, so a cache key packs the bits of two
+// f64s into a u128 (one f64 per u64 half), as upstream packs two f32s into a u64. Packing them
+// any narrower would let two different sizes share a key.
+/// The bits of one layout number in a cache key
+type DimBits = u64;
+/// The bits of two layout numbers in a cache key
+type KeyBits = u128;
+/// The width of [`DimBits`]
+const DIM_BITS: u32 = 64;
 
-/// `f32::INFINITY` as a u32
-const INFINITY_BITS: u32 = 0b_0_11111111_00000000000000000000000_u32;
-/// `f32::NEG_INFINITY` as a u32
-const NEG_INFINITY_BITS: u32 = 0b_1_11111111_00000000000000000000000_u32;
+// Manually written-out results of float to bit casts because
+// `f64::to_bits` is not yet const at our MSRV.
 
-// The `CacheKey` encodes two f32s as a u64. We know that the f32s will always be
-// non-negative, so we pack two extra bits encoding the `RequestedAxis` into the
-// sign bits of the f32s. These constants help to encode and decode those bits.
+// VIPER-PATCH(layout-f64): the f64 infinities.
+/// `f64::INFINITY` as a [`DimBits`]
+const INFINITY_BITS: DimBits = 0x7FF0_0000_0000_0000;
+/// `f64::NEG_INFINITY` as a [`DimBits`]
+const NEG_INFINITY_BITS: DimBits = 0xFFF0_0000_0000_0000;
 
-/// The sign bit of the first f32
-const SIGN_BIT_1: u64 = 1u64 << 63;
-/// The sign bit of the second f32
-const SIGN_BIT_2: u64 = 1u64 << 31;
+// The `CacheKey` encodes two layout numbers as a KeyBits. We know that they will always be
+// non-negative, so we pack two extra bits encoding the `RequestedAxis` into their
+// sign bits. These constants help to encode and decode those bits.
+
+// VIPER-PATCH(layout-f64): the sign bits of the two halves of a KeyBits.
+/// The sign bit of the first number
+const SIGN_BIT_1: KeyBits = 1 << (2 * DIM_BITS - 1);
+/// The sign bit of the second number
+const SIGN_BIT_2: KeyBits = 1 << (DIM_BITS - 1);
 /// Mask of both sign bits (used to compute NON_SIGN_BITS_MASK)
-const BOTH_SIGN_BITS_MASK: u64 = SIGN_BIT_1 | SIGN_BIT_2;
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+const BOTH_SIGN_BITS_MASK: KeyBits = SIGN_BIT_1 | SIGN_BIT_2;
 /// Mask of excluding the sign bits (used when setting/getting the size excluding the packed bits)
-const NON_SIGN_BITS_MASK: u64 = !BOTH_SIGN_BITS_MASK;
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+const NON_SIGN_BITS_MASK: KeyBits = !BOTH_SIGN_BITS_MASK;
 
 /// Mask which includes only the bits which encode the x-axis value that we can use to ignore the
 /// y-axis value when comparing a cache key.
-const X_AXIS_VALUE_MASK: u64 = (u32::MAX as u64) << 32;
+// VIPER-PATCH(layout-f64): the upper half of a KeyBits.
+const X_AXIS_VALUE_MASK: KeyBits = (DimBits::MAX as KeyBits) << DIM_BITS;
 
-/// Pack `Option<f32>` into `u32`
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Pack `Option<LayoutFloat>` into a [`DimBits`]
 #[inline(always)]
-// VIPER-PATCH(layout-float-alias): the alias.
-fn option_cache_key(input: Option<LayoutFloat>) -> u32 {
+// VIPER-PATCH(layout-f64): the bits of an f64.
+fn option_cache_key(input: Option<LayoutFloat>) -> DimBits {
     match input {
         Some(value) => value.to_bits(),
         None => INFINITY_BITS,
     }
 }
 
-/// Pack `Size<Option<f32>>` into `u64`
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Pack `Size<Option<LayoutFloat>>` into a [`KeyBits`]
 #[inline(always)]
-// VIPER-PATCH(layout-float-alias): the alias.
-fn size_option_cache_key(input: Size<Option<LayoutFloat>>) -> u64 {
-    (option_cache_key(input.width) as u64) << 32 | option_cache_key(input.height) as u64
+// VIPER-PATCH(layout-f64): two f64s in a u128.
+fn size_option_cache_key(input: Size<Option<LayoutFloat>>) -> KeyBits {
+    (option_cache_key(input.width) as KeyBits) << DIM_BITS | option_cache_key(input.height) as KeyBits
 }
 
-/// Pack `AvailableSpace` into `u32`
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Pack `AvailableSpace` into a [`DimBits`]
 #[inline(always)]
-fn available_space_cache_key(input: AvailableSpace) -> u32 {
+// VIPER-PATCH(layout-f64): the bits of an f64.
+fn available_space_cache_key(input: AvailableSpace) -> DimBits {
     match input {
         AvailableSpace::Definite(value) => (-value).to_bits(),
         AvailableSpace::MinContent => NEG_INFINITY_BITS,
@@ -64,27 +83,31 @@ fn available_space_cache_key(input: AvailableSpace) -> u32 {
     }
 }
 
-/// Pack `Size<AvailableSpace>` into `u64`
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Pack `Size<AvailableSpace>` into a [`KeyBits`]
 #[inline(always)]
 #[allow(dead_code)]
-fn size_available_space_cache_key(input: Size<AvailableSpace>) -> u64 {
-    (available_space_cache_key(input.width) as u64) << 32 | available_space_cache_key(input.height) as u64
+// VIPER-PATCH(layout-f64): two f64s in a u128.
+fn size_available_space_cache_key(input: Size<AvailableSpace>) -> KeyBits {
+    (available_space_cache_key(input.width) as KeyBits) << DIM_BITS | available_space_cache_key(input.height) as KeyBits
 }
 
-/// Encodes combination of a `known_dimension` (Option<f32>) and `AvailableSpace` in
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Encodes combination of a `known_dimension` (Option<LayoutFloat>) and `AvailableSpace` in
 /// a single dimension into a cache key in a single dimension.
 #[inline(always)]
-// VIPER-PATCH(layout-float-alias): the alias.
-fn mixed_cache_key(kd: Option<LayoutFloat>, avs: AvailableSpace) -> u32 {
+// VIPER-PATCH(layout-f64): the bits of an f64.
+fn mixed_cache_key(kd: Option<LayoutFloat>, avs: AvailableSpace) -> DimBits {
     kd.map(|kd| kd.to_bits()).unwrap_or_else(|| available_space_cache_key(avs))
 }
 
-/// Encodes combination of a `known_dimension` (Option<f32>) and `AvailableSpace` in
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Encodes combination of a `known_dimension` (Option<LayoutFloat>) and `AvailableSpace` in
 /// two dimensions into a cache key in a single dimension.
 #[inline(always)]
-// VIPER-PATCH(layout-float-alias): the alias.
-fn size_mixed_cache_key(kd: Size<Option<LayoutFloat>>, avs: Size<AvailableSpace>) -> u64 {
-    (mixed_cache_key(kd.width, avs.width) as u64) << 32 | mixed_cache_key(kd.height, avs.height) as u64
+// VIPER-PATCH(layout-f64): two f64s in a u128.
+fn size_mixed_cache_key(kd: Size<Option<LayoutFloat>>, avs: Size<AvailableSpace>) -> KeyBits {
+    (mixed_cache_key(kd.width, avs.width) as KeyBits) << DIM_BITS | mixed_cache_key(kd.height, avs.height) as KeyBits
 }
 
 /// Space-optimised cache key that packs bits into as small a size as possible
@@ -92,9 +115,11 @@ fn size_mixed_cache_key(kd: Size<Option<LayoutFloat>>, avs: Size<AvailableSpace>
 #[cfg_attr(feature = "serde", derive(Serialize))]
 struct CacheKey {
     /// The initial cached size of the node itself
-    kd_available_space: u64,
+    // VIPER-PATCH(layout-f64): two f64s.
+    kd_available_space: KeyBits,
     /// The initial cached size of the parent's node
-    parent_size: u64,
+    // VIPER-PATCH(layout-f64): two f64s.
+    parent_size: KeyBits,
     /// Whether each known dimension is definite. Normalized such that an axis
     /// without a known dimension is always `true`.
     known_dimensions_are_definite: Size<bool>,
@@ -104,18 +129,21 @@ impl CacheKey {
     #[inline(always)]
     #[allow(dead_code)]
     /// Return the parent size with the extra bits that encode the requested axis masked out
-    fn parent_size(&self) -> u64 {
+    // VIPER-PATCH(layout-f64): two f64s.
+    fn parent_size(&self) -> KeyBits {
         self.parent_size & NON_SIGN_BITS_MASK
     }
 
     /// Return the parent size with the extra bits that encode the requested axis masked out
     /// And the y-axis value masked out
-    fn x_axis_parent_size(&self) -> u64 {
+    // VIPER-PATCH(layout-f64): two f64s.
+    fn x_axis_parent_size(&self) -> KeyBits {
         self.parent_size & (X_AXIS_VALUE_MASK & NON_SIGN_BITS_MASK)
     }
 
     /// Return the bits that encode the requested axis
-    fn requested_axis_bits(&self) -> u64 {
+    // VIPER-PATCH(layout-f64): two f64s.
+    fn requested_axis_bits(&self) -> KeyBits {
         self.parent_size & BOTH_SIGN_BITS_MASK
     }
 
@@ -381,7 +409,8 @@ mod tests {
     use crate::geometry::Line;
     use crate::tree::SizingMode;
 
-    fn input(width: f32) -> LayoutInput {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn input(width: LayoutFloat) -> LayoutInput {
         LayoutInput {
             run_mode: RunMode::ComputeSize,
             sizing_mode: SizingMode::InherentSize,
@@ -394,7 +423,8 @@ mod tests {
         }
     }
 
-    fn output(width: f32) -> LayoutOutput {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn output(width: LayoutFloat) -> LayoutOutput {
         LayoutOutput::from_outer_size(Size { width, height: width })
     }
 
@@ -402,12 +432,15 @@ mod tests {
     fn recently_used_measure_entries_get_a_second_chance() {
         let mut cache = Cache::new();
         for width in 0..CACHE_SIZE {
-            cache.store(&input(width as f32), output(width as f32));
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            cache.store(&input(width as LayoutFloat), output(width as LayoutFloat));
         }
-        cache.store(&input(CACHE_SIZE as f32), output(CACHE_SIZE as f32));
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        cache.store(&input(CACHE_SIZE as LayoutFloat), output(CACHE_SIZE as LayoutFloat));
 
         assert_eq!(cache.get(&input(1.0)), Some(output(1.0)));
-        cache.store(&input((CACHE_SIZE + 1) as f32), output((CACHE_SIZE + 1) as f32));
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        cache.store(&input((CACHE_SIZE + 1) as LayoutFloat), output((CACHE_SIZE + 1) as LayoutFloat));
 
         assert_eq!(cache.get(&input(1.0)), Some(output(1.0)));
         assert_eq!(cache.get(&input(2.0)), None);
@@ -452,7 +485,8 @@ mod tests {
         assert_ne!(cache.recently_used_entries, 0);
     }
 
-    fn perform_layout_input(width: f32, height: f32) -> LayoutInput {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn perform_layout_input(width: LayoutFloat, height: LayoutFloat) -> LayoutInput {
         LayoutInput {
             run_mode: RunMode::PerformLayout,
             known_dimensions: Size { width: Some(width), height: Some(height) },

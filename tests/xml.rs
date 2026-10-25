@@ -1,5 +1,6 @@
 use roxmltree::Document;
 use std::{fmt::Debug, io::Write, path::PathBuf, str::FromStr};
+use taffy::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 use taffy::{
     prelude::TaffyZero as _, AlignContent, AlignItems, AlignSelf, AvailableSpace, CheapCloneStr, Dimension,
     GridAutoTracks, GridTemplateComponent, GridTemplateTracks, JustifyContent, JustifyItems, LengthPercentage,
@@ -13,9 +14,10 @@ mod xml;
 #[derive(Debug)]
 struct OutputNode {
     node_id: NodeId,
-    location: Point<f32>,
-    size: Size<f32>,
-    scroll_size: Option<Size<f32>>,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    location: Point<LayoutFloat>,
+    size: Size<LayoutFloat>,
+    scroll_size: Option<Size<LayoutFloat>>,
     resolved_rows: Option<String>,
     resolved_columns: Option<String>,
     children: Vec<OutputNode>,
@@ -28,7 +30,8 @@ enum TrackListToken {
     /// A bracketed line name group, e.g. `[foo bar]`
     Names(Vec<String>),
     /// A used track size in pixels, e.g. `10.5px`
-    Size(f32),
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    Size(LayoutFloat),
 }
 
 /// Parse a resolved track list string (e.g. `[foo] 10px 20.5px [bar baz]` or `none`) into tokens
@@ -53,7 +56,8 @@ fn parse_track_list(input: &str) -> Vec<TrackListToken> {
             let end = rest.find(' ').unwrap_or(rest.len());
             let size = rest[..end]
                 .strip_suffix("px")
-                .and_then(|size| size.parse::<f32>().ok())
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                .and_then(|size| size.parse::<LayoutFloat>().ok())
                 .unwrap_or_else(|| panic!("invalid track size {:?} in {input:?}", &rest[..end]));
             tokens.push(TrackListToken::Size(size));
             rest = &rest[end..];

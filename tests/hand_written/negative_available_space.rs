@@ -8,7 +8,11 @@ mod negative_available_space {
     /// horizontal margins (40px) exceed the container width. Returns the leaf's final width
     /// and every `LayoutInput` with a negative known dimension or available space that reached
     /// the leaf's measure function.
-    fn layout_with_oversized_margins(display: Display, flex_direction: FlexDirection) -> (f32, Vec<String>) {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn layout_with_oversized_margins(
+        display: Display,
+        flex_direction: FlexDirection,
+    ) -> (taffy::LayoutFloat, Vec<String>) {
         let mut taffy = new_test_tree();
         let leaf = taffy
             .new_leaf_with_context(
@@ -46,7 +50,8 @@ mod negative_available_space {
                 |inputs: LayoutInput, node_id: NodeId, context: Option<&mut TestNodeContext>, style: &Style| {
                     let known = inputs.known_dimensions;
                     let avail = inputs.available_space;
-                    let is_negative = |value: Option<f32>| value.is_some_and(|v| v < 0.0);
+                    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                    let is_negative = |value: Option<taffy::LayoutFloat>| value.is_some_and(|v| v < 0.0);
                     let is_negative_avail =
                         |value: AvailableSpace| matches!(value, AvailableSpace::Definite(v) if v < 0.0);
                     if is_negative(known.width)

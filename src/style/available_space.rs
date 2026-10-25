@@ -43,8 +43,9 @@ impl FromLength for AvailableSpace {
 impl FromCss for AvailableSpace {
     fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
         match parser.next()?.clone() {
-            Token::Number { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
-            Token::Dimension { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
+            // VIPER-PATCH(layout-f64): the parsed number widened to a layout number.
+            Token::Number { value, .. } if value >= 0.0 => Ok(Self::Definite(LayoutFloat::from(value))),
+            Token::Dimension { value, .. } if value >= 0.0 => Ok(Self::Definite(LayoutFloat::from(value))),
             Token::Ident(ident) if ident == "max-content" => Ok(Self::MaxContent),
             Token::Ident(ident) if ident == "min-content" => Ok(Self::MinContent),
             token => Err(parser.new_unexpected_token_error(token))?,

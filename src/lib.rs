@@ -104,7 +104,10 @@ mod readme_doctest {
 // Upstream uses `f32` throughout. Mechanical: the alias is `f32`, so no value changes.
 /// The number type of computed layout values: sizes, positions, offsets, baselines and the
 /// available space. Style values stay `f32`.
-pub type LayoutFloat = f32;
+// VIPER-PATCH(layout-f64): the alias is `f64`, so a sum of layout numbers is exact far beyond
+// `f32`'s 24-bit significand (every multiple of 1/64 up to 2^46). Style values stay `f32` and widen
+// exactly where they are resolved against a layout number.
+pub type LayoutFloat = f64;
 
 #[cfg(feature = "flexbox")]
 #[doc(inline)]

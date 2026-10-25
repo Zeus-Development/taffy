@@ -218,7 +218,8 @@ mod caching {
         for (index, node) in [a, b, c].into_iter().enumerate() {
             let layout = taffy.layout(node).unwrap();
             assert_eq!(layout.size.height, 19.0);
-            assert_eq!(layout.location.y, 19.0 * index as f32);
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            assert_eq!(layout.location.y, 19.0 * index as taffy::LayoutFloat);
         }
     }
     /// An item whose spanned tracks cannot receive its min-/max-content contribution in any

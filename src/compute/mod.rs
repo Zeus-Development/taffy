@@ -277,8 +277,10 @@ fn compute_in_flow_root_layout(
     let margin =
         style.margin().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
     let scrollbar_size = Size {
-        width: if style.overflow().y == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
-        height: if style.overflow().x == Overflow::Scroll { style.scrollbar_width() } else { 0.0 },
+        // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+        width: if style.overflow().y == Overflow::Scroll { LayoutFloat::from(style.scrollbar_width()) } else { 0.0 },
+        // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+        height: if style.overflow().x == Overflow::Scroll { LayoutFloat::from(style.scrollbar_width()) } else { 0.0 },
     };
     let is_rtl = style.direction().is_rtl();
 

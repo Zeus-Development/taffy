@@ -639,8 +639,9 @@ impl Size<Option<LayoutFloat>> {
     pub fn maybe_apply_aspect_ratio(self, aspect_ratio: Option<f32>) -> Size<Option<LayoutFloat>> {
         match aspect_ratio {
             Some(ratio) => match (self.width, self.height) {
-                (Some(width), None) => Size { width: Some(width), height: Some(width / ratio) },
-                (None, Some(height)) => Size { width: Some(height * ratio), height: Some(height) },
+                // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
+                (Some(width), None) => Size { width: Some(width), height: Some(width / LayoutFloat::from(ratio)) },
+                (None, Some(height)) => Size { width: Some(height * LayoutFloat::from(ratio)), height: Some(height) },
                 _ => self,
             },
             None => self,
@@ -669,15 +670,13 @@ impl<T> Size<Option<T>> {
 impl Size<Dimension> {
     /// Generates a [`Size<Dimension>`] using length values
     #[must_use]
-    // VIPER-PATCH(layout-float-alias): the alias.
-    pub const fn from_lengths(width: LayoutFloat, height: LayoutFloat) -> Self {
+    pub const fn from_lengths(width: f32, height: f32) -> Self {
         Size { width: Dimension(CompactLength::length(width)), height: Dimension(CompactLength::length(height)) }
     }
 
     /// Generates a [`Size<Dimension>`] using percentage values
     #[must_use]
-    // VIPER-PATCH(layout-float-alias): the alias.
-    pub const fn from_percent(width: LayoutFloat, height: LayoutFloat) -> Self {
+    pub const fn from_percent(width: f32, height: f32) -> Self {
         Size { width: Dimension(CompactLength::percent(width)), height: Dimension(CompactLength::percent(height)) }
     }
 }

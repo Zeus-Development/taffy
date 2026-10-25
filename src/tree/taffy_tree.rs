@@ -1019,7 +1019,8 @@ mod tests {
     fn size_measure_function(
         inputs: LayoutInput,
         _node_id: NodeId,
-        node_context: Option<&mut Size<f32>>,
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        node_context: Option<&mut Size<LayoutFloat>>,
         style: &Style,
     ) -> LayoutOutput {
         compute_leaf_layout(
@@ -1066,7 +1067,8 @@ mod tests {
 
     #[test]
     fn new_leaf_with_context() {
-        let mut taffy: TaffyTree<Size<f32>> = TaffyTree::new();
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        let mut taffy: TaffyTree<Size<LayoutFloat>> = TaffyTree::new();
 
         let res = taffy.new_leaf_with_context(Style::default(), Size::ZERO);
         assert!(res.is_ok());
@@ -1141,24 +1143,28 @@ mod tests {
 
         // The root's height comes entirely from its child's 1px bottom border
         let child = taffy
-            .new_leaf(Style { border: Rect { bottom: length(1f32), ..Rect::zero() }, ..Default::default() })
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            .new_leaf(Style { border: Rect { bottom: length(1.0), ..Rect::zero() }, ..Default::default() })
             .unwrap();
         let root = taffy.new_with_children(Style::default(), &[child]).unwrap();
 
         taffy.compute_layout(root, Size::MIN_CONTENT).unwrap();
-        assert_eq!(taffy.layout(root).unwrap().size.height, 1f32);
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        assert_eq!(taffy.layout(root).unwrap().size.height, 1.0);
 
         taffy.remove(child).unwrap();
         assert_eq!(taffy.dirty(root), Ok(true));
 
         // The root no longer has any children, so its height should shrink back to zero
         taffy.compute_layout(root, Size::MIN_CONTENT).unwrap();
-        assert_eq!(taffy.layout(root).unwrap().size.height, 0f32);
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        assert_eq!(taffy.layout(root).unwrap().size.height, 0.0);
     }
 
     #[test]
     fn set_measure() {
-        let mut taffy: TaffyTree<Size<f32>> = TaffyTree::new();
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        let mut taffy: TaffyTree<Size<LayoutFloat>> = TaffyTree::new();
         let node = taffy.new_leaf_with_context(Style::default(), Size { width: 200.0, height: 200.0 }).unwrap();
         taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 200.0);
@@ -1170,7 +1176,8 @@ mod tests {
 
     #[test]
     fn set_measure_of_previously_unmeasured_node() {
-        let mut taffy: TaffyTree<Size<f32>> = TaffyTree::new();
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        let mut taffy: TaffyTree<Size<LayoutFloat>> = TaffyTree::new();
         let node = taffy.new_leaf(Style::default()).unwrap();
         taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, size_measure_function).unwrap();
         assert_eq!(taffy.layout(node).unwrap().size.width, 0.0);
@@ -1434,7 +1441,8 @@ mod tests {
     fn compute_layout_should_produce_valid_result() {
         let mut taffy: TaffyTree<()> = TaffyTree::new();
         let node_result = taffy.new_leaf(Style {
-            size: Size { width: Dimension::from_length(10f32), height: Dimension::from_length(10f32) },
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            size: Size { width: Dimension::from_length(10.0), height: Dimension::from_length(10.0) },
             ..Default::default()
         });
         assert!(node_result.is_ok());
@@ -1454,7 +1462,8 @@ mod tests {
 
         let node = taffy
             .new_leaf(Style {
-                size: Size { width: Dimension::from_percent(1f32), height: Dimension::from_percent(1f32) },
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                size: Size { width: Dimension::from_percent(1.0), height: Dimension::from_percent(1.0) },
                 ..Default::default()
             })
             .unwrap();
@@ -1462,12 +1471,14 @@ mod tests {
         let root = taffy
             .new_with_children(
                 Style {
-                    size: Size { width: Dimension::from_length(100f32), height: Dimension::from_length(100f32) },
+                    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                    size: Size { width: Dimension::from_length(100.0), height: Dimension::from_length(100.0) },
                     padding: Rect {
-                        left: length(10f32),
-                        right: length(20f32),
-                        top: length(30f32),
-                        bottom: length(40f32),
+                        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                        left: length(10.0),
+                        right: length(20.0),
+                        top: length(30.0),
+                        bottom: length(40.0),
                     },
                     ..Default::default()
                 },
@@ -1486,8 +1497,9 @@ mod tests {
         // - top-right:    {x: 20, y: 30}
         // - bottom-right: {x: 20, y: 40}
         let layout = taffy.layout(node).unwrap();
-        assert_eq!(layout.location.x, 10f32);
-        assert_eq!(layout.location.y, 30f32);
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        assert_eq!(layout.location.x, 10.0);
+        assert_eq!(layout.location.y, 30.0);
     }
 
     #[test]

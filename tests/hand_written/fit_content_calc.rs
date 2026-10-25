@@ -11,16 +11,19 @@ mod fit_content_calc {
     /// A calc() value of the form `pct * basis + px`. 8-byte aligned so that its address can be tagged.
     #[repr(align(8))]
     struct Calc {
-        px: f32,
-        pct: f32,
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        px: taffy::LayoutFloat,
+        pct: taffy::LayoutFloat,
     }
 
-    fn calc(px: f32, pct: f32) -> LengthPercentage {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn calc(px: taffy::LayoutFloat, pct: taffy::LayoutFloat) -> LengthPercentage {
         let ptr: &'static Calc = Box::leak(Box::new(Calc { px, pct }));
         LengthPercentage::calc(ptr as *const Calc as *const ())
     }
 
-    fn resolve_calc(val: *const (), basis: f32) -> f32 {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn resolve_calc(val: *const (), basis: taffy::LayoutFloat) -> taffy::LayoutFloat {
         // SAFETY: every calc pointer in this test is created by `calc` above and never freed
         let calc = unsafe { &*(val as *const Calc) };
         calc.pct * basis + calc.px
@@ -31,9 +34,10 @@ mod fit_content_calc {
         Grid,
         /// A leaf with the given min-content width, max-content width and height
         Leaf {
-            min_width: f32,
-            max_width: f32,
-            height: f32,
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            min_width: taffy::LayoutFloat,
+            max_width: taffy::LayoutFloat,
+            height: taffy::LayoutFloat,
         },
     }
 
@@ -60,7 +64,13 @@ mod fit_content_calc {
             }
         }
 
-        fn leaf(min_width: f32, max_width: f32, height: f32, style: Style) -> Node {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        fn leaf(
+            min_width: taffy::LayoutFloat,
+            max_width: taffy::LayoutFloat,
+            height: taffy::LayoutFloat,
+            style: Style,
+        ) -> Node {
             Node::new(Kind::Leaf { min_width, max_width, height }, style, Vec::new())
         }
 
@@ -119,7 +129,8 @@ mod fit_content_calc {
         fn set_unrounded_layout(&mut self, node_id: NodeId, layout: &Layout) {
             self.node_from_id_mut(node_id).layout = *layout
         }
-        fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        fn resolve_calc_value(&self, val: *const (), basis: taffy::LayoutFloat) -> taffy::LayoutFloat {
             resolve_calc(val, basis)
         }
         fn compute_child_layout(&mut self, node_id: NodeId, inputs: LayoutInput) -> LayoutOutput {
@@ -257,7 +268,8 @@ mod fit_content_calc {
         column: GridTemplateComponent<String>,
         container_width: Dimension,
         available_width: AvailableSpace,
-    ) -> (f32, f32) {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    ) -> (taffy::LayoutFloat, taffy::LayoutFloat) {
         let mut root = Node::new(
             Kind::Grid,
             Style {

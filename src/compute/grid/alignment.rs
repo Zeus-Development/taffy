@@ -124,7 +124,8 @@ pub(super) fn align_and_position_item(
     let last_baseline_at_margin_edge = last_baseline_at_margin_edge(&style);
     #[cfg(feature = "content_size")]
     let contain = style.contain();
-    let scrollbar_width = style.scrollbar_width();
+    // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+    let scrollbar_width = LayoutFloat::from(style.scrollbar_width());
     let aspect_ratio = style.aspect_ratio();
     let is_replaced = style.is_replaced();
     // Fall back to the container's justify-items/align-items if unset (`None`), and then resolve

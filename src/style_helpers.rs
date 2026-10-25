@@ -104,6 +104,10 @@ pub trait TaffyZero {
 impl TaffyZero for f32 {
     const ZERO: f32 = 0.0;
 }
+// VIPER-PATCH(layout-f64): layout numbers are f64, so f64 has a zero too.
+impl TaffyZero for f64 {
+    const ZERO: f64 = 0.0;
+}
 impl<T: TaffyZero> TaffyZero for Option<T> {
     const ZERO: Option<T> = Some(T::ZERO);
 }

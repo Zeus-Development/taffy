@@ -244,8 +244,9 @@ impl LengthPercentageAuto {
         calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> Option<LayoutFloat> {
         match self.0.tag() {
-            CompactLength::LENGTH_TAG => Some(self.0.value()),
-            CompactLength::PERCENT_TAG => Some(context * self.0.value()),
+            // VIPER-PATCH(layout-f64): a length widened; a percentage as a single-precision product.
+            CompactLength::LENGTH_TAG => Some(self.0.layout_value()),
+            CompactLength::PERCENT_TAG => Some(self.0.percent_of(context)),
             CompactLength::AUTO_TAG => None,
             #[cfg(feature = "calc")]
             _ if self.0.is_plain_calc() => Some(calc_resolver(self.0.calc_value(), context)),

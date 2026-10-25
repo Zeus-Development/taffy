@@ -420,6 +420,22 @@ impl CompactLength {
         self.0.value()
     }
 
+    // VIPER-PATCH(layout-f64): a stored value is an `f32` style value; where it is resolved against
+    // a layout number it widens exactly to the layout number type.
+    /// Get the numeric value as a layout number (exact: every `f32` is a [`LayoutFloat`])
+    #[inline(always)]
+    pub fn layout_value(self) -> LayoutFloat {
+        LayoutFloat::from(self.value())
+    }
+
+    // VIPER-PATCH(layout-f64): a percentage resolves as upstream's single-precision product of the percentage and
+    // its basis, widened exactly afterwards, so a wider layout number type leaves every resolved percentage as it was.
+    /// The stored value, a percentage as a fraction, times `basis`, as a single-precision product
+    #[inline(always)]
+    pub fn percent_of(self, basis: LayoutFloat) -> LayoutFloat {
+        LayoutFloat::from(self.value() * basis as f32)
+    }
+
     /// Get the calc pointer of the `CompactLength`
     #[inline(always)]
     #[cfg(feature = "calc")]
@@ -559,7 +575,8 @@ impl CompactLength {
         calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> Option<LayoutFloat> {
         match self.tag() {
-            CompactLength::PERCENT_TAG => Some(self.value() * parent_size),
+            // VIPER-PATCH(layout-f64): a percentage of a layout number, as a single-precision product.
+            CompactLength::PERCENT_TAG => Some(self.percent_of(parent_size)),
             #[cfg(feature = "calc")]
             _ if self.is_plain_calc() => Some(calc_resolver(self.0.ptr(), parent_size)),
             _ => None,

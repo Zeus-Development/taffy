@@ -7,8 +7,9 @@ mod baseline {
     /// (measured from the node's top edge in the block axis).
     #[derive(Debug, Clone, Copy)]
     struct BaselineContext {
-        size: Size<f32>,
-        baseline_y: Option<f32>,
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        size: Size<taffy::LayoutFloat>,
+        baseline_y: Option<taffy::LayoutFloat>,
     }
 
     fn baseline_measure_function(

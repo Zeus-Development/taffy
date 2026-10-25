@@ -72,11 +72,14 @@ struct FlexItem {
     // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
     last_baseline_at_margin_edge: bool,
     /// The width of the scrollbars (if it has any)
-    scrollbar_width: f32,
+    // VIPER-PATCH(layout-f64): the scrollbar width, widened.
+    scrollbar_width: LayoutFloat,
     /// The flex shrink style of the item
-    flex_shrink: f32,
+    // VIPER-PATCH(layout-f64): the flex factors, style values, widened once, as they scale layout numbers.
+    flex_shrink: LayoutFloat,
     /// The flex grow style of the item
-    flex_grow: f32,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    flex_grow: LayoutFloat,
     /// Whether the item's used flex basis is definite (rather than derived from the item's content)
     flex_basis_is_definite: bool,
 
@@ -774,7 +777,8 @@ fn compute_constants(
     // However, the axis are switched (transposed) because a node that scrolls vertically needs
     // *horizontal* space to be reserved for a scrollbar
     let scrollbar_gutter = style.overflow().transpose().map(|overflow| match overflow {
-        Overflow::Scroll => style.scrollbar_width(),
+        // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+        Overflow::Scroll => LayoutFloat::from(style.scrollbar_width()),
         _ => 0.0,
     });
     #[cfg(feature = "content_size")]
@@ -951,9 +955,11 @@ fn generate_anonymous_flex_items(
                 // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
                 last_baseline_at_margin_edge: last_baseline_at_margin_edge(&child_style),
                 contain: child_style.contain(),
-                scrollbar_width: child_style.scrollbar_width(),
-                flex_grow: child_style.flex_grow(),
-                flex_shrink: child_style.flex_shrink(),
+                // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+                scrollbar_width: LayoutFloat::from(child_style.scrollbar_width()),
+                // VIPER-PATCH(layout-f64): the flex factors widened.
+                flex_grow: LayoutFloat::from(child_style.flex_grow()),
+                flex_shrink: LayoutFloat::from(child_style.flex_shrink()),
                 flex_basis_is_definite: false,
                 flex_basis: 0.0,
                 inner_flex_basis: 0.0,
@@ -1236,6 +1242,8 @@ fn determine_flex_base_size(
                     } else {
                         (cross, 0.0)
                     };
+                    // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
+                    let ratio = LayoutFloat::from(ratio);
                     let inner_main = if dir.is_row() { inner_cross * ratio } else { inner_cross / ratio };
                     break 'flex_basis inner_main + main_padding_border;
                 }
@@ -1782,6 +1790,8 @@ fn determine_container_main_size(
                                 let transferred_main_size = item
                                     .aspect_ratio
                                     .zip(child_known_dimensions.cross(dir))
+                                    // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
+                                    .map(|(ratio, cross)| (LayoutFloat::from(ratio), cross))
                                     .map(|(ratio, cross)| if constants.is_row { cross * ratio } else { cross / ratio });
 
                                 let inner_main_size = measured_main_size.maybe_max(transferred_main_size);
@@ -1986,7 +1996,8 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
 
         let mut unfrozen: Vec<&mut FlexItem> = line.items.iter_mut().filter(|child| !child.frozen).collect();
 
-        let (sum_flex_grow, sum_flex_shrink): (f32, f32) =
+        // VIPER-PATCH(layout-f64): sums of the widened flex factors.
+        let (sum_flex_grow, sum_flex_shrink): (LayoutFloat, LayoutFloat) =
             unfrozen.iter().fold((0.0, 0.0), |(flex_grow, flex_shrink), item| {
                 (flex_grow + item.flex_grow, flex_shrink + item.flex_shrink)
             });
@@ -3332,7 +3343,8 @@ mod balance {
     /// infinite size is clamped to the largest finite `f32` so that sums stay meaningful.)
     // VIPER-PATCH(layout-float-alias): the alias.
     fn to_size(value: LayoutFloat) -> f64 {
-        (value as f64).clamp(0.0, LayoutFloat::MAX as f64)
+        // VIPER-PATCH(layout-f64): a layout number is already an f64; the clamp stays at the largest finite `f32`.
+        value.clamp(0.0, f64::from(f32::MAX))
     }
 
     /// Line sizing shared by the scoring and readback phases
@@ -3549,7 +3561,8 @@ mod balance {
         let item_count = item_sizes.len();
         debug_assert!(item_count > 0);
         let gap_between_items = to_size(gap_between_items);
-        let limit = line_limit as f64;
+        // VIPER-PATCH(layout-f64): a layout number is already an f64.
+        let limit = line_limit;
 
         let mut sums: Vec<(f64, bool)> = new_vec_with_capacity(item_count);
         let mut sum = 0.0;
@@ -3676,14 +3689,16 @@ mod balance {
         /// The naive `O(line_count * item_count²)` dynamic program from the spec, used as a
         /// test oracle for the divide-and-conquer optimized implementation
         fn naive_line_item_counts(
-            item_sizes: &[f32],
-            line_limit: f32,
-            gap_between_items: f32,
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            item_sizes: &[LayoutFloat],
+            line_limit: LayoutFloat,
+            gap_between_items: LayoutFloat,
             min_line_count: usize,
         ) -> Vec<usize> {
             let item_count = item_sizes.len();
             let gap_between_items = to_size(gap_between_items);
-            let limit = line_limit as f64;
+            // VIPER-PATCH(layout-f64): a layout number is already an f64.
+            let limit = line_limit;
 
             let mut sums: Vec<(f64, bool)> = new_vec_with_capacity(item_count);
             let mut sum = 0.0;
@@ -3782,21 +3797,25 @@ mod balance {
                 // Mostly small item counts (quantized sizes maximize ties, exercising the
                 // tie-break rules), with some larger ones exercising the recursion
                 let item_count = if case % 20 == 0 { (rand(60) + 1) as usize } else { (rand(15) + 1) as usize };
-                let mut item_sizes: Vec<f32> = new_vec_with_capacity(item_count);
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                let mut item_sizes: Vec<LayoutFloat> = new_vec_with_capacity(item_count);
                 for _ in 0..item_count {
                     let size = match rand(8) {
                         // Frequent zero items exercise the zero-sized-item rule
                         0 | 1 => 0.0,
                         2 => -10.0,
-                        _ => rand(8) as f32 * 25.0,
+                        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                        _ => rand(8) as LayoutFloat * 25.0,
                     };
                     item_sizes.push(size);
                 }
                 let line_limit = match rand(5) {
-                    0 => f32::INFINITY,
-                    _ => rand(10) as f32 * 30.0,
+                    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                    0 => LayoutFloat::INFINITY,
+                    _ => rand(10) as LayoutFloat * 30.0,
                 };
-                let gap_between_items = rand(4) as f32 * 5.0;
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                let gap_between_items = rand(4) as LayoutFloat * 5.0;
                 let min_line_count = rand(item_count as u32 + 2) as usize;
 
                 let expected = naive_line_item_counts(&item_sizes, line_limit, gap_between_items, min_line_count);

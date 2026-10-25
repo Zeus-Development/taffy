@@ -5,6 +5,7 @@ mod common {
 use common::image::{image_measure_function, ImageContext};
 use common::text::{text_measure_function, FontMetrics, TextContext, WritingMode, LOREM_IPSUM};
 use taffy::prelude::*;
+use taffy::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 
 enum NodeContext {
     Text(TextContext),
@@ -12,11 +13,13 @@ enum NodeContext {
 }
 
 fn measure_function(
-    known_dimensions: taffy::geometry::Size<Option<f32>>,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    known_dimensions: taffy::geometry::Size<Option<LayoutFloat>>,
     available_space: taffy::geometry::Size<taffy::style::AvailableSpace>,
     node_context: Option<&mut NodeContext>,
     font_metrics: &FontMetrics,
-) -> Size<f32> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+) -> Size<LayoutFloat> {
     if let Size { width: Some(width), height: Some(height) } = known_dimensions {
         return Size { width, height };
     }

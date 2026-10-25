@@ -8,7 +8,8 @@ mod detailed_grid_info {
     use taffy::{Direction, Point, RepetitionCount};
     use taffy_test_helpers::new_test_tree;
 
-    fn definite(width: f32, height: f32) -> Size<AvailableSpace> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn definite(width: taffy::LayoutFloat, height: taffy::LayoutFloat) -> Size<AvailableSpace> {
         Size { width: AvailableSpace::Definite(width), height: AvailableSpace::Definite(height) }
     }
 

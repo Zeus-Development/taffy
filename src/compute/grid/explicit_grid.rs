@@ -408,7 +408,8 @@ mod test {
     #[test]
     fn explicit_grid_sizing_no_repeats() {
         let grid_style = (600.0, 600.0, 2, 4).into_grid();
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -439,7 +440,8 @@ mod test {
             grid_template_rows: vec![repeat(AutoFill, vec![length(20.0)])],
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -470,7 +472,8 @@ mod test {
             grid_template_rows: vec![repeat(AutoFill, vec![length(20.0)])],
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -563,7 +566,8 @@ mod test {
             grid_template_rows: vec![repeat(AutoFill, vec![length(20.0), length(10.0)])],
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -595,7 +599,8 @@ mod test {
             gap: length(20.0),
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -626,7 +631,8 @@ mod test {
             gap: length(20.0),
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),
@@ -658,7 +664,8 @@ mod test {
             gap: length(20.0),
             ..Default::default()
         };
-        let preferred_size = grid_style.size.map(|s| s.into_option());
+        // VIPER-PATCH(layout-f64): the style sizes widened to layout numbers.
+        let preferred_size = grid_style.size.map(|s| s.into_option().map(LayoutFloat::from));
         let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
             &grid_style,
             preferred_size.get_abs(AbsoluteAxis::Horizontal),

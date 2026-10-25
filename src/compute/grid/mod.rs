@@ -151,7 +151,8 @@ fn compute_container_constants<Tree: LayoutGridContainer>(
     // However, the axis are switched (transposed) because a node that scrolls vertically needs
     // *horizontal* space to be reserved for a scrollbar
     let scrollbar_gutter = style.overflow().transpose().map(|overflow| match overflow {
-        Overflow::Scroll => style.scrollbar_width(),
+        // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+        Overflow::Scroll => LayoutFloat::from(style.scrollbar_width()),
         _ => 0.0,
     });
     #[cfg(feature = "content_size")]

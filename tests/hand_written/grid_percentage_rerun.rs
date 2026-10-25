@@ -8,7 +8,8 @@ mod grid_percentage_rerun {
     use taffy_test_helpers::{new_test_tree, test_measure_function, TestNodeContext, WritingMode};
 
     /// Returns (container width, item width)
-    fn layout_fit_content_percent_column(available_width: AvailableSpace) -> (f32, f32) {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn layout_fit_content_percent_column(available_width: AvailableSpace) -> (taffy::LayoutFloat, taffy::LayoutFloat) {
         let mut tree = new_test_tree();
         let item = tree
             .new_leaf_with_context(
@@ -49,9 +50,13 @@ mod grid_percentage_rerun {
     /// Returns (container height, row 1 height, row 2 height, row 3 height) for a grid with
     /// `grid-template-rows: auto 20% auto` whose items are 20px, 60px and 20px tall respectively.
     /// Mirrors WPT css/css-grid/layout-algorithm/grid-percent-rows-filled-shrinkwrap-001.html
-    fn layout_percent_row_shrinkwrap(available_height: AvailableSpace) -> (f32, f32, f32, f32) {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn layout_percent_row_shrinkwrap(
+        available_height: AvailableSpace,
+    ) -> (taffy::LayoutFloat, taffy::LayoutFloat, taffy::LayoutFloat, taffy::LayoutFloat) {
         let mut tree: TaffyTree<()> = TaffyTree::new();
-        let item = |tree: &mut TaffyTree<()>, height: f32| {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        let item = |tree: &mut TaffyTree<()>, height: taffy::LayoutFloat| {
             tree.new_leaf(Style { size: Size { width: length(20.0), height: length(height) }, ..Default::default() })
                 .unwrap()
         };

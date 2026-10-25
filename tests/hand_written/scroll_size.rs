@@ -5,12 +5,14 @@
 use taffy::geometry::Point;
 use taffy::prelude::*;
 use taffy::style::{BoxSizing, Display, Overflow};
+use taffy::LayoutFloat; // VIPER-PATCH(layout-f64): the alias.
 use taffy_test_helpers::{new_test_tree, test_measure_function, TestNodeContext};
 
-const CONTENT: f32 = 1000.0;
-const CONTAINER: f32 = 200.0;
-const BORDER: f32 = 20.0;
-const PADDING: f32 = 20.0;
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+const CONTENT: LayoutFloat = 1000.0;
+const CONTAINER: LayoutFloat = 200.0;
+const BORDER: LayoutFloat = 20.0;
+const PADDING: LayoutFloat = 20.0;
 
 fn scroller_with_padding(display: Display, border: Rect<LengthPercentage>, padding: Rect<LengthPercentage>) -> Layout {
     let mut tree = new_test_tree();
@@ -40,7 +42,8 @@ fn scroller(display: Display, border: Rect<LengthPercentage>) -> Layout {
     scroller_with_padding(display, border, edge(0.0, 0.0))
 }
 
-fn edge(top: f32, bottom: f32) -> Rect<LengthPercentage> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn edge(top: LayoutFloat, bottom: LayoutFloat) -> Rect<LengthPercentage> {
     Rect {
         left: LengthPercentage::from_length(0.0),
         right: LengthPercentage::from_length(0.0),

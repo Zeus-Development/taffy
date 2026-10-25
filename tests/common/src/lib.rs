@@ -1,4 +1,6 @@
 use taffy::{compute_leaf_layout, LayoutInput, LayoutOutput, NodeId, Size, Style, TaffyTree};
+// VIPER-PATCH(layout-f64): the measure data are layout numbers, of the alias type.
+use taffy::LayoutFloat;
 
 /// Creates a `TaffyTree` that uses `TestNodeContext`. The purpose of this function is
 /// to allow `TaffyTree` to be monomophised once in this crate rather than separately for
@@ -29,12 +31,14 @@ impl TestNodeContext {
     }
 
     /// Create a `TestNodeContext` for a fixed-sized node
-    pub const fn fixed(width: f32, height: f32) -> Self {
+    // VIPER-PATCH(layout-f64): the alias.
+    pub const fn fixed(width: LayoutFloat, height: LayoutFloat) -> Self {
         Self::new(TestMeasureData::Fixed(Size { width, height }))
     }
 
     /// Create a `TestNodeContext` for a node with a width and aspect-ratio
-    pub const fn aspect_ratio(width: f32, height_ratio: f32) -> Self {
+    // VIPER-PATCH(layout-f64): the alias.
+    pub const fn aspect_ratio(width: LayoutFloat, height_ratio: LayoutFloat) -> Self {
         let data = AspectRatioMeasureData { width, height_ratio };
         Self::new(TestMeasureData::AspectRatio(data))
     }
@@ -52,7 +56,8 @@ pub enum TestMeasureData {
     /// A zero-sized node
     Zero,
     /// A node with a fixed size
-    Fixed(Size<f32>),
+    // VIPER-PATCH(layout-f64): the alias.
+    Fixed(Size<LayoutFloat>),
     /// A node with a fixed size
     AspectRatio(AspectRatioMeasureData),
     /// A node with text using the Ahem font
@@ -98,11 +103,13 @@ pub fn test_measure_function(
 /// Measure data for nodes that returns results based on an intrinsic aspect ratio
 #[derive(Debug, Copy, Clone)]
 pub struct AspectRatioMeasureData {
-    width: f32,
-    height_ratio: f32,
+    // VIPER-PATCH(layout-f64): the alias.
+    width: LayoutFloat,
+    height_ratio: LayoutFloat,
 }
 impl AspectRatioMeasureData {
-    fn measure(&self, known_dimensions: Size<Option<f32>>) -> Size<f32> {
+    // VIPER-PATCH(layout-f64): the alias.
+    fn measure(&self, known_dimensions: Size<Option<LayoutFloat>>) -> Size<LayoutFloat> {
         let width = known_dimensions.width.unwrap_or(self.width);
         let height = known_dimensions.height.unwrap_or(width * self.height_ratio);
         Size { width, height }
@@ -143,15 +150,18 @@ pub struct AhemTextMeasureData {
 impl AhemTextMeasureData {
     fn measure(
         &self,
-        known_dimensions: taffy::Size<Option<f32>>,
+        // VIPER-PATCH(layout-f64): the alias.
+        known_dimensions: taffy::Size<Option<LayoutFloat>>,
         available_space: taffy::Size<taffy::AvailableSpace>,
-    ) -> taffy::Size<f32> {
+        // VIPER-PATCH(layout-f64): the alias.
+    ) -> taffy::Size<LayoutFloat> {
         use taffy::prelude::*;
         use taffy::AbsoluteAxis;
 
         const ZWS: char = '\u{200B}';
-        const H_WIDTH: f32 = 10.0;
-        const H_HEIGHT: f32 = 10.0;
+        // VIPER-PATCH(layout-f64): the alias.
+        const H_WIDTH: LayoutFloat = 10.0;
+        const H_HEIGHT: LayoutFloat = 10.0;
 
         let inline_axis = match self.writing_mode {
             WritingMode::Horizontal => AbsoluteAxis::Horizontal,
@@ -169,11 +179,13 @@ impl AhemTextMeasureData {
         let inline_size = known_dimensions
             .get_abs(inline_axis)
             .unwrap_or_else(|| match available_space.get_abs(inline_axis) {
-                AvailableSpace::MinContent => min_line_length as f32 * H_WIDTH,
-                AvailableSpace::MaxContent => max_line_length as f32 * H_WIDTH,
-                AvailableSpace::Definite(inline_size) => inline_size.min(max_line_length as f32 * H_WIDTH),
+                // VIPER-PATCH(layout-f64): the alias.
+                AvailableSpace::MinContent => min_line_length as LayoutFloat * H_WIDTH,
+                AvailableSpace::MaxContent => max_line_length as LayoutFloat * H_WIDTH,
+                AvailableSpace::Definite(inline_size) => inline_size.min(max_line_length as LayoutFloat * H_WIDTH),
             })
-            .max(min_line_length as f32 * H_WIDTH);
+            // VIPER-PATCH(layout-f64): the alias.
+            .max(min_line_length as LayoutFloat * H_WIDTH);
         let block_size = known_dimensions.get_abs(block_axis).unwrap_or_else(|| {
             let inline_line_length = (inline_size / H_WIDTH).floor() as usize;
             let mut line_count = 1;
@@ -188,7 +200,8 @@ impl AhemTextMeasureData {
                     current_line_length += line.len();
                 };
             }
-            (line_count as f32) * H_HEIGHT
+            // VIPER-PATCH(layout-f64): the alias.
+            (line_count as LayoutFloat) * H_HEIGHT
         });
 
         match self.writing_mode {

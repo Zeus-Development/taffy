@@ -11,7 +11,8 @@ mod adversarial_styles {
     };
     use taffy_test_helpers::new_test_tree;
 
-    fn definite(size: f32) -> Size<AvailableSpace> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    fn definite(size: taffy::LayoutFloat) -> Size<AvailableSpace> {
         Size { width: AvailableSpace::Definite(size), height: AvailableSpace::Definite(size) }
     }
 
@@ -19,7 +20,8 @@ mod adversarial_styles {
     /// which used to prevent that algorithm from ever finding a valid hypothetical fr size.
     #[test]
     fn non_finite_flex_factor_terminates() {
-        for flex_factor in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        for flex_factor in [taffy::LayoutFloat::NAN, taffy::LayoutFloat::INFINITY, taffy::LayoutFloat::NEG_INFINITY] {
             let mut tree = new_test_tree();
             let child = tree
                 .new_leaf(Style {
@@ -49,7 +51,8 @@ mod adversarial_styles {
     /// prevent the "find the size of an fr" algorithm from terminating.
     #[test]
     fn non_finite_grid_container_size_terminates() {
-        for width in [f32::NAN, f32::INFINITY] {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        for width in [taffy::LayoutFloat::NAN, taffy::LayoutFloat::INFINITY] {
             let mut tree = new_test_tree();
             let child = tree.new_leaf(Style::default()).unwrap();
             let root = tree

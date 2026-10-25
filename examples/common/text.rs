@@ -1,8 +1,9 @@
 pub const LOREM_IPSUM : &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
 pub struct FontMetrics {
-    pub char_width: f32,
-    pub char_height: f32,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    pub char_width: taffy::LayoutFloat,
+    pub char_height: taffy::LayoutFloat,
 }
 
 #[allow(dead_code)]
@@ -17,11 +18,13 @@ pub struct TextContext {
 }
 
 pub fn text_measure_function(
-    known_dimensions: taffy::geometry::Size<Option<f32>>,
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    known_dimensions: taffy::geometry::Size<Option<taffy::LayoutFloat>>,
     available_space: taffy::geometry::Size<taffy::style::AvailableSpace>,
     text_context: &TextContext,
     font_metrics: &FontMetrics,
-) -> taffy::geometry::Size<f32> {
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+) -> taffy::geometry::Size<taffy::LayoutFloat> {
     use taffy::geometry::AbsoluteAxis;
     use taffy::prelude::*;
 
@@ -40,11 +43,13 @@ pub fn text_measure_function(
     let max_line_length: usize = words.iter().map(|line| line.len()).sum();
     let inline_size =
         known_dimensions.get_abs(inline_axis).unwrap_or_else(|| match available_space.get_abs(inline_axis) {
-            AvailableSpace::MinContent => min_line_length as f32 * font_metrics.char_width,
-            AvailableSpace::MaxContent => max_line_length as f32 * font_metrics.char_width,
+            // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+            AvailableSpace::MinContent => min_line_length as taffy::LayoutFloat * font_metrics.char_width,
+            AvailableSpace::MaxContent => max_line_length as taffy::LayoutFloat * font_metrics.char_width,
             AvailableSpace::Definite(inline_size) => inline_size
-                .min(max_line_length as f32 * font_metrics.char_width)
-                .max(min_line_length as f32 * font_metrics.char_width),
+                // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+                .min(max_line_length as taffy::LayoutFloat * font_metrics.char_width)
+                .max(min_line_length as taffy::LayoutFloat * font_metrics.char_width),
         });
     let block_size = known_dimensions.get_abs(block_axis).unwrap_or_else(|| {
         let inline_line_length = (inline_size / font_metrics.char_width).floor() as usize;
@@ -65,7 +70,8 @@ pub fn text_measure_function(
                 current_line_length += word.len() + 1;
             };
         }
-        (line_count as f32) * font_metrics.char_height
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        (line_count as taffy::LayoutFloat) * font_metrics.char_height
     });
 
     match text_context.writing_mode {

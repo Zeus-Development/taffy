@@ -15,7 +15,8 @@ fn bordered(style: Style) -> Style {
 // each truncated with its remainder carried to the next flexible track.
 
 /// The used widths, in layout units, of `count` 1fr columns of a grid `width` px wide with one item per column.
-fn fr_columns_in_units(width: f32, count: usize) -> Vec<f32> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn fr_columns_in_units(width: f32, count: usize) -> Vec<LayoutFloat> {
     let mut taffy: TaffyTree<()> = TaffyTree::new();
     taffy.disable_rounding();
     let items: Vec<NodeId> = (0..count)
@@ -51,7 +52,8 @@ fn fr_tracks_never_sum_to_more_than_the_container() {
     expected.extend([640.0; 15]);
     expected.push(639.0);
     assert_eq!(columns, expected);
-    assert_eq!(columns.iter().sum::<f32>(), 10_878.0);
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    assert_eq!(columns.iter().sum::<LayoutFloat>(), 10_878.0);
 }
 
 // VIPER-PATCH(grid-baseline-margin): a baseline-aligned grid item's used margin is its own; the baseline shim
@@ -87,7 +89,8 @@ fn a_baseline_aligned_grid_item_keeps_its_own_margin() {
 
 /// Lays out `children` in a flex container with `container`'s style and returns their border boxes as
 /// `(x, y, width, height)`, then the container's.
-fn flex_boxes(container: Style, children: &[Style]) -> Vec<(f32, f32, f32, f32)> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn flex_boxes(container: Style, children: &[Style]) -> Vec<(LayoutFloat, LayoutFloat, LayoutFloat, LayoutFloat)> {
     let mut taffy: TaffyTree<()> = TaffyTree::new();
     taffy.disable_rounding();
     let items: Vec<NodeId> =
@@ -157,8 +160,9 @@ fn a_columns_stretched_width_goes_through_the_ratio_in_the_content_box() {
 
 /// The height of `flex: 0 0 50px; aspect-ratio: 1` holding content 100px high, in a 400px row aligned as `align`,
 /// with `item`'s extra style; the container's height second.
-fn tall_content_item(align: AlignItems, item: Style) -> (f32, f32) {
-    let mut taffy: TaffyTree<f32> = TaffyTree::new();
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn tall_content_item(align: AlignItems, item: Style) -> (LayoutFloat, LayoutFloat) {
+    let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
     taffy.disable_rounding();
     let style = Style { flex_grow: 0.0, flex_shrink: 0.0, flex_basis: length(50.0), aspect_ratio: Some(1.0), ..item };
     let leaf = taffy.new_leaf_with_context(style, 100.0).unwrap();
@@ -219,7 +223,8 @@ fn paragraph(taffy: &mut TaffyTree<()>, lines: usize, padding_bottom: f32, align
 }
 
 /// Lays out `root` and returns the `(y, height)` of each of `nodes`.
-fn heights(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(f32, f32)> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn heights(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(LayoutFloat, LayoutFloat)> {
     taffy.disable_rounding();
     taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
     nodes
@@ -348,7 +353,8 @@ fn a_containers_last_baseline_comes_from_its_last_item_that_has_one() {
 }
 
 /// Lays out `root` and returns the `(x, width)` of each of `nodes`.
-fn widths(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(f32, f32)> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn widths(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(LayoutFloat, LayoutFloat)> {
     taffy.disable_rounding();
     taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
     nodes.iter().map(|node| taffy.layout(*node).map(|layout| (layout.location.x, layout.size.width)).unwrap()).collect()
@@ -486,7 +492,8 @@ fn contained(taffy: &mut TaffyTree<()>, display: Display, contain: Contain, chil
 }
 
 /// Lays out `root` and returns the `(width, height)` of each of `nodes`.
-fn sizes(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(f32, f32)> {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn sizes(taffy: &mut TaffyTree<()>, root: NodeId, nodes: &[NodeId]) -> Vec<(LayoutFloat, LayoutFloat)> {
     taffy.disable_rounding();
     taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
     nodes
@@ -604,7 +611,8 @@ fn a_size_contained_leaf_is_measured_only_in_its_contained_size() {
         let root = taffy.new_with_children(row(), &[leaf]).unwrap();
         let intrinsic_measures = Cell::new(0);
         // Like Viper's, the measure function reads the content box's available width.
-        let measure = |_: Size<Option<f32>>, available: Size<AvailableSpace>| {
+        // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+        let measure = |_: Size<Option<LayoutFloat>>, available: Size<AvailableSpace>| {
             let width = match available.width {
                 AvailableSpace::Definite(width) => Some(width),
                 _ => None,
@@ -686,14 +694,16 @@ fn a_containers_last_baseline_can_be_its_clipping_childs_margin_edge() {
     assert_eq!(heights(&mut taffy, root, &[outer, paragraph]), [(0.0, 45.0), (29.0, 30.0)]);
 }
 
-// VIPER-PATCH(layout-float-alias): every layout number has the type `taffy::LayoutFloat`. The alias is `f32`, so
-// layout arithmetic and every result are unchanged; the whole fork suite passing unchanged is the main proof.
+// VIPER-PATCH(layout-float-alias): every layout number has the type `taffy::LayoutFloat`.
+// VIPER-PATCH(layout-f64): the alias is `f64`; style values stay `f32` and widen exactly where they are resolved.
 
-/// The alias is `f32`, layout results have its type, and style values stay `f32`.
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// The alias is `f64`, layout results have its type, and style values stay `f32`.
 #[test]
 fn layout_numbers_are_the_alias() {
     use std::any::TypeId;
-    assert_eq!(TypeId::of::<LayoutFloat>(), TypeId::of::<f32>());
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    assert_eq!(TypeId::of::<LayoutFloat>(), TypeId::of::<f64>());
     let layout = Layout::new();
     let _: (Point<LayoutFloat>, Size<LayoutFloat>, Rect<LayoutFloat>) = (layout.location, layout.size, layout.padding);
     let _: LayoutFloat = layout.scrollbar_size.width;
@@ -701,12 +711,16 @@ fn layout_numbers_are_the_alias() {
     assert_eq!(available, Some(10.5));
     let style_value: f32 = CompactLength::length(10.5).value();
     assert_eq!(style_value, 10.5);
+    // VIPER-PATCH(layout-f64): layout numbers of the alias type.
+    assert_eq!(CompactLength::length(10.5).layout_value(), 10.5);
 }
 
-/// Two blocks 2^24px and 1px high stack in `f32` sums: the second sits at 2^24px and the container is 2^24px
-/// high, since 2^24 + 1 is not an `f32` (the next one is 2^24 + 2).
+// VIPER-PATCH(layout-f64): this comment names the alias's widths.
+/// Two blocks 2^24px and 1px high stack in exact sums: the second sits at 2^24px and the container is
+/// 2^24 + 1px high, which `f32` cannot hold (its next value after 2^24 is 2^24 + 2).
 #[test]
-fn layout_sums_are_still_f32_sums() {
+// VIPER-PATCH(layout-f64): layout numbers of the alias type.
+fn layout_sums_are_exact_beyond_f32() {
     let mut taffy: TaffyTree<()> = TaffyTree::new();
     taffy.disable_rounding();
     let block =
@@ -717,5 +731,24 @@ fn layout_sums_are_still_f32_sums() {
         taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &[tall, short]).unwrap();
     taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
     assert_eq!(taffy.layout(short).unwrap().location.y, 16_777_216.0);
-    assert_eq!(taffy.layout(root).unwrap().size.height, 16_777_216.0);
+    // VIPER-PATCH(layout-f64): the 1px above 2^24px is kept (an `f32` sum rounds it away, so the
+    // difference would be 0).
+    assert_eq!(taffy.layout(root).unwrap().size.height - 16_777_216.0, 1.0);
+}
+
+/// Three hundred blocks 100,000.015625px high (each exact in `f32`) stack exactly, to 30,000,004.6875px, a sum
+/// that `f32` cannot hold.
+#[test]
+fn many_children_sum_exactly_in_layout_units() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    taffy.disable_rounding();
+    let block =
+        |height: f32| Style { size: Size { width: length(10.0), height: length(height) }, ..Default::default() };
+    let children: Vec<NodeId> = (0..300).map(|_| taffy.new_leaf(block(100_000.016)).unwrap()).collect();
+    let root = taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &children).unwrap();
+    taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    // 100,000.016 is the `f32` 100,000.015625.
+    let last = taffy.layout(children[299]).unwrap().location.y;
+    assert_eq!(last, 299.0 * 100_000.015_625);
+    assert_eq!(taffy.layout(root).unwrap().size.height, 300.0 * 100_000.015_625);
 }

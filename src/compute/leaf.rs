@@ -96,7 +96,8 @@ where
     // However, the axis are switched (transposed) because a node that scrolls vertically needs
     // *horizontal* space to be reserved for a scrollbar
     let scrollbar_gutter = style.overflow().transpose().map(|overflow| match overflow {
-        Overflow::Scroll => style.scrollbar_width(),
+        // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+        Overflow::Scroll => LayoutFloat::from(style.scrollbar_width()),
         _ => 0.0,
     });
     // TODO: make side configurable based on the `direction` property
@@ -178,7 +179,11 @@ where
         .maybe_clamp(node_min_size, node_max_size);
     let size = Size {
         width: clamped_size.width,
-        height: f32_max(clamped_size.height, aspect_ratio.map(|ratio| clamped_size.width / ratio).unwrap_or(0.0)),
+        // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
+        height: f32_max(
+            clamped_size.height,
+            aspect_ratio.map(|ratio| clamped_size.width / LayoutFloat::from(ratio)).unwrap_or(0.0),
+        ),
     };
     let size = size.maybe_max(padding_border.sum_axes().map(Some));
 

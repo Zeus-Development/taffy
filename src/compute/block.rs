@@ -360,7 +360,8 @@ struct BlockItem {
     // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
     last_baseline_at_margin_edge: bool,
     /// The width of the item's scrollbars (if it has scrollbars)
-    scrollbar_width: f32,
+    // VIPER-PATCH(layout-f64): the scrollbar width, widened.
+    scrollbar_width: LayoutFloat,
 
     /// The position style of the item
     position: Position,
@@ -555,7 +556,8 @@ fn compute_inner(
     // *horizontal* space to be reserved for a scrollbar
     let scrollbar_gutter = {
         let offsets = style.overflow().transpose().map(|overflow| match overflow {
-            Overflow::Scroll => style.scrollbar_width(),
+            // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+            Overflow::Scroll => LayoutFloat::from(style.scrollbar_width()),
             _ => 0.0,
         });
         match direction {
@@ -1010,7 +1012,8 @@ fn generate_item_list(
                 contain,
                 // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.
                 last_baseline_at_margin_edge: last_baseline_at_margin_edge(&child_style),
-                scrollbar_width: child_style.scrollbar_width(),
+                // VIPER-PATCH(layout-f64): the scrollbar width, a style value, widened.
+                scrollbar_width: LayoutFloat::from(child_style.scrollbar_width()),
                 position,
                 direction: child_style.direction(),
                 align_self: child_style.align_self(),

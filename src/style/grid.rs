@@ -1028,8 +1028,9 @@ impl MaxTrackSizingFunction {
         calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> Option<LayoutFloat> {
         match self.0.tag() {
-            CompactLength::LENGTH_TAG => Some(self.0.value()),
-            CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            // VIPER-PATCH(layout-f64): a length widened; a percentage as a single-precision product.
+            CompactLength::LENGTH_TAG => Some(self.0.layout_value()),
+            CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.percent_of(size)),
             #[cfg(feature = "calc")]
             _ if self.0.is_plain_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
             _ => None,
@@ -1049,8 +1050,9 @@ impl MaxTrackSizingFunction {
         #[cfg(not(feature = "calc"))]
         let _ = &calc_resolver;
         match self.0.tag() {
-            CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.value()),
-            CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            // VIPER-PATCH(layout-f64): a length widened; a percentage as a single-precision product.
+            CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.layout_value()),
+            CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.percent_of(size)),
             #[cfg(feature = "calc")]
             _ if self.0.is_fit_content_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
             _ => None,
@@ -1071,8 +1073,9 @@ impl MaxTrackSizingFunction {
         calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> Option<LayoutFloat> {
         match self.0.tag() {
-            CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.value()),
-            CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            // VIPER-PATCH(layout-f64): a length widened; a percentage as a single-precision product.
+            CompactLength::FIT_CONTENT_PX_TAG => Some(self.0.layout_value()),
+            CompactLength::FIT_CONTENT_PERCENT_TAG => parent_size.map(|size| self.0.percent_of(size)),
             #[cfg(feature = "calc")]
             _ if self.0.is_fit_content_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
             _ => self.definite_value(parent_size, calc_resolver),
@@ -1403,8 +1406,9 @@ impl MinTrackSizingFunction {
         calc_resolver: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> Option<LayoutFloat> {
         match self.0.tag() {
-            CompactLength::LENGTH_TAG => Some(self.0.value()),
-            CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.value() * size),
+            // VIPER-PATCH(layout-f64): a length widened; a percentage as a single-precision product.
+            CompactLength::LENGTH_TAG => Some(self.0.layout_value()),
+            CompactLength::PERCENT_TAG => parent_size.map(|size| self.0.percent_of(size)),
             #[cfg(feature = "calc")]
             _ if self.0.is_plain_calc() => parent_size.map(|size| calc_resolver(self.0.calc_value(), size)),
             _ => None,

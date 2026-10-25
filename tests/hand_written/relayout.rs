@@ -36,7 +36,8 @@ fn relayout() {
     taffy
         .compute_layout(
             node,
-            taffy::geometry::Size { width: AvailableSpace::Definite(100f32), height: AvailableSpace::Definite(100f32) },
+            // VIPER-PATCH(layout-f64): the available space is a layout number.
+            taffy::geometry::Size { width: AvailableSpace::Definite(100.0), height: AvailableSpace::Definite(100.0) },
         )
         .unwrap();
     let initial = taffy.layout(node).unwrap().location;
@@ -47,8 +48,9 @@ fn relayout() {
             .compute_layout(
                 node,
                 taffy::geometry::Size {
-                    width: AvailableSpace::Definite(100f32),
-                    height: AvailableSpace::Definite(100f32),
+                    // VIPER-PATCH(layout-f64): the available space is a layout number.
+                    width: AvailableSpace::Definite(100.0),
+                    height: AvailableSpace::Definite(100.0),
                 },
             )
             .unwrap();
