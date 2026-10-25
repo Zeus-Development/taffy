@@ -268,15 +268,22 @@ value meets a layout number:
 - `CompactLength::percent_of(basis)` resolves a percentage as upstream's
   single-precision product of the fraction and the basis, widened
   afterwards. An `f64` product changes rounded results (1% of 50px is
-  0.49999998 in `f32` and 0.5 in `f64`), and 20 of the XML fixture tests
-  fail with it; the single-precision product keeps every resolved
-  percentage as it was.
+  0.5 in `f32` and 0.49999999 in `f64`, since `0.01f32` is 0.0099999998),
+  and 20 of the XML fixture tests fail with it; the single-precision
+  product keeps every resolved percentage as it was.
 - Flex grow and shrink factors, fr factors, aspect ratios and
   `scrollbar_width` widen where they meet layout numbers; a `FlexItem`'s
   factors are layout numbers.
 - `grid-fr-carry`'s loop keeps its fr size, shares and remainders in `f32`
   with `f32::EPSILON`, as that patch defines them; only the expanded size, a
-  whole number of layout units, widens.
+  whole number of layout units, widens. So percentages and fr shares are
+  exact only as far as `f32` reaches: above 2^18 px a result may be off by
+  half an `f32` step (1/64 px just above 2^18 px, up to 1 px near 2^25 px;
+  `width: 100%` of a 300,000.015625px container is 300,000px), as upstream's
+  are. Sums, positions and every other layout number are exact.
+- `AvailableSpace::is_roughly_equal` compares within `LayoutFloat::EPSILON`
+  (`layout-float-alias`'s line), now `f64`'s; nothing in Taffy or Viper
+  calls it.
 - The cache keys pack two `f64`s in a `u128` (`DimBits = u64`,
   `KeyBits = u128`), as upstream packs two `f32`s in a `u64`; any narrower
   packing would let two sizes share a key.
