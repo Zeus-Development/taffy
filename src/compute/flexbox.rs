@@ -2,7 +2,8 @@
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
 // VIPER-PATCH(size-containment): the shared containment and baseline code.
 use crate::compute::common::containment::{last_baseline_at_margin_edge, size_contained_inputs};
-use crate::geometry::{Line, Point, Rect, Size};
+// VIPER-PATCH(layout-f64): sizes through an aspect ratio.
+use crate::geometry::{ratio_div, ratio_mul, Line, Point, Rect, Size};
 use crate::style::{
     AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, Contain,
     JustifyContent, LengthPercentageAuto, Overflow, Position,
@@ -1242,9 +1243,9 @@ fn determine_flex_base_size(
                     } else {
                         (cross, 0.0)
                     };
-                    // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
-                    let ratio = LayoutFloat::from(ratio);
-                    let inner_main = if dir.is_row() { inner_cross * ratio } else { inner_cross / ratio };
+                    // VIPER-PATCH(layout-f64): a size through the ratio, as a single-precision product.
+                    let inner_main =
+                        if dir.is_row() { ratio_mul(inner_cross, ratio) } else { ratio_div(inner_cross, ratio) };
                     break 'flex_basis inner_main + main_padding_border;
                 }
             }
@@ -1790,9 +1791,14 @@ fn determine_container_main_size(
                                 let transferred_main_size = item
                                     .aspect_ratio
                                     .zip(child_known_dimensions.cross(dir))
-                                    // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
-                                    .map(|(ratio, cross)| (LayoutFloat::from(ratio), cross))
-                                    .map(|(ratio, cross)| if constants.is_row { cross * ratio } else { cross / ratio });
+                                    // VIPER-PATCH(layout-f64): a size through the ratio, as a single-precision product.
+                                    .map(|(ratio, cross)| {
+                                        if constants.is_row {
+                                            ratio_mul(cross, ratio)
+                                        } else {
+                                            ratio_div(cross, ratio)
+                                        }
+                                    });
 
                                 let inner_main_size = measured_main_size.maybe_max(transferred_main_size);
 

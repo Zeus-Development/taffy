@@ -2,6 +2,8 @@
 
 // VIPER-PATCH(size-containment): the shared containment code.
 use crate::compute::common::containment::size_contained_inputs;
+// VIPER-PATCH(layout-f64): a size through an aspect ratio.
+use crate::geometry::ratio_div;
 #[cfg(feature = "content_size")]
 use crate::geometry::Rect;
 use crate::geometry::Size;
@@ -179,10 +181,10 @@ where
         .maybe_clamp(node_min_size, node_max_size);
     let size = Size {
         width: clamped_size.width,
-        // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
+        // VIPER-PATCH(layout-f64): a size through the ratio, as a single-precision quotient.
         height: f32_max(
             clamped_size.height,
-            aspect_ratio.map(|ratio| clamped_size.width / LayoutFloat::from(ratio)).unwrap_or(0.0),
+            aspect_ratio.map(|ratio| ratio_div(clamped_size.width, ratio)).unwrap_or(0.0),
         ),
     };
     let size = size.maybe_max(padding_border.sum_axes().map(Some));

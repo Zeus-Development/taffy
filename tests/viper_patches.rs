@@ -752,3 +752,24 @@ fn many_children_sum_exactly_in_layout_units() {
     assert_eq!(last, 299.0 * 100_000.015_625);
     assert_eq!(taffy.layout(root).unwrap().size.height, 300.0 * 100_000.015_625);
 }
+
+/// A size through an aspect ratio is a single-precision product, widened: 70px high at 50 / 35 is 100px wide,
+/// as in `f32` (the `f64` product of the `f32` ratio is 100.0000024px).
+#[test]
+fn a_size_through_an_aspect_ratio_is_a_single_precision_product() {
+    let mut taffy: TaffyTree<()> = TaffyTree::new();
+    taffy.disable_rounding();
+    let style = |position: Position| Style {
+        position,
+        size: Size { width: auto(), height: length(70.0) },
+        aspect_ratio: Some(50.0 / 35.0),
+        ..Default::default()
+    };
+    let flowed = taffy.new_leaf(style(Position::Relative)).unwrap();
+    let absolute = taffy.new_leaf(style(Position::Absolute)).unwrap();
+    let root =
+        taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &[flowed, absolute]).unwrap();
+    taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(taffy.layout(flowed).unwrap().size.width, 100.0);
+    assert_eq!(taffy.layout(absolute).unwrap().size.width, 100.0);
+}

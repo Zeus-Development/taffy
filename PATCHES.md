@@ -63,7 +63,7 @@ Branch: viper/taffy-0.15.0
 | `size-containment` | size and inline-size containment: `Contain::SIZE`, `Contain::INLINE_SIZE` and `contain: strict`; a box sized as if it had no content in its contained axes, then its content laid out in that size, in the block, flexbox, grid and leaf algorithms (CSS Containment 2 §3.1, §3.2) | none (no register entry existed) | fork: `a_size_contained_block_is_as_high_as_if_it_were_empty`, `a_size_contained_flex_item_has_no_content_size`, `an_inline_size_contained_box_lays_its_content_out_in_its_empty_width`, `a_size_contained_grid_keeps_its_explicit_tracks`, `a_size_contained_leaf_is_measured_only_in_its_contained_size`, `a_size_contained_boxs_fixed_height_is_a_percentage_basis`, and `parse_contain` in `src/style/mod.rs`; Viper: `viper-layout::containment size_and_inline_size_containment_size_boxes_as_if_empty` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `scroll-last-baseline` | `CoreStyle::baseline_source` and `CoreStyle::is_block_container`; a block container that is a block-axis scroll container with `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1) | `adr:layout-scroll-last-baseline` | fork: `a_clipping_blocks_last_baseline_is_its_bottom_margin_edge`, `a_containers_last_baseline_can_be_its_clipping_childs_margin_edge`; Viper: `viper-layout::containment a_scroll_containers_last_baseline_is_its_bottom_margin_edge` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `layout-float-alias` | every layout number (computed sizes, positions, offsets, baselines, the available space, known and intrinsic sizes, track sizes and offsets, float segments, scrollable overflow, cache entries) has the type of one alias, `LayoutFloat = f32`, exported at the crate root and in the prelude; style values stay `f32`. Mechanical; behaviour-free; prepares `layout-f64` | `adr:layout-length-cap` (prepares it; later tasks close it) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_still_f32_sums` (since `layout-f64`: `layout_sums_are_exact_beyond_f32`), and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
-| `layout-f64` | the alias becomes `LayoutFloat = f64`: layout arithmetic (sums, positions, offsets, the available space, track sizes, cache keys) is exact for every multiple of 1/64 px up to 2^46; style values stay `f32` and widen exactly where they are resolved; a percentage stays upstream's single-precision product, widened; the `grid-fr-carry` loop stays single-precision | `adr:layout-length-cap` (Viper closes it with its own clamp removal) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_exact_beyond_f32`, `many_children_sum_exactly_in_layout_units`, and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
+| `layout-f64` | the alias becomes `LayoutFloat = f64`: layout arithmetic (sums, positions, offsets, the available space, track sizes, cache keys) is exact for every multiple of 1/64 px up to 2^46; style values stay `f32` and widen exactly where they are resolved; a percentage and a size through an aspect ratio stay upstream's single-precision products, widened; the `grid-fr-carry` loop stays single-precision | `adr:layout-length-cap` (Viper closes it with its own clamp removal) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_exact_beyond_f32`, `many_children_sum_exactly_in_layout_units`, `a_size_through_an_aspect_ratio_is_a_single_precision_product`, and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -271,13 +271,20 @@ value meets a layout number:
   0.5 in `f32` and 0.49999999 in `f64`, since `0.01f32` is 0.0099999998),
   and 20 of the XML fixture tests fail with it; the single-precision
   product keeps every resolved percentage as it was.
-- Flex grow and shrink factors, fr factors, aspect ratios and
-  `scrollbar_width` widen where they meet layout numbers; a `FlexItem`'s
-  factors are layout numbers.
+- A size transferred through an aspect ratio (`maybe_apply_aspect_ratio`,
+  the leaf's height, a flex item's ratio-derived flex basis and main size)
+  is upstream's single-precision product or quotient, widened
+  (`geometry::ratio_mul`, `ratio_div`): 70px through 50 / 35 is 100px in
+  `f32`, and the `f64` product of the `f32` ratio is 100.0000024px, which
+  a box's offset then truncates one unit short (a Viper corpus case shows
+  it).
+- Flex grow and shrink factors, fr factors and `scrollbar_width` widen
+  where they meet layout numbers; a `FlexItem`'s factors are layout
+  numbers.
 - `grid-fr-carry`'s loop keeps its fr size, shares and remainders in `f32`
   with `f32::EPSILON`, as that patch defines them; only the expanded size, a
-  whole number of layout units, widens. So percentages and fr shares are
-  exact only as far as `f32` reaches: above 2^18 px a result may be off by
+  whole number of layout units, widens. So percentages, fr shares and
+  sizes through an aspect ratio are exact only as far as `f32` reaches: above 2^18 px a result may be off by
   half an `f32` step (1/64 px just above 2^18 px, up to 1 px near 2^25 px;
   `width: 100%` of a 300,000.015625px container is 300,000px), as upstream's
   are. Sums, positions and every other layout number are exact.

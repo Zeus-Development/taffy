@@ -639,14 +639,30 @@ impl Size<Option<LayoutFloat>> {
     pub fn maybe_apply_aspect_ratio(self, aspect_ratio: Option<f32>) -> Size<Option<LayoutFloat>> {
         match aspect_ratio {
             Some(ratio) => match (self.width, self.height) {
-                // VIPER-PATCH(layout-f64): the ratio, a style value, widened.
-                (Some(width), None) => Size { width: Some(width), height: Some(width / LayoutFloat::from(ratio)) },
-                (None, Some(height)) => Size { width: Some(height * LayoutFloat::from(ratio)), height: Some(height) },
+                // VIPER-PATCH(layout-f64): a size through the ratio, as a single-precision product.
+                (Some(width), None) => Size { width: Some(width), height: Some(ratio_div(width, ratio)) },
+                (None, Some(height)) => Size { width: Some(ratio_mul(height, ratio)), height: Some(height) },
                 _ => self,
             },
             None => self,
         }
     }
+}
+
+// VIPER-PATCH(layout-f64): a size through an aspect ratio is upstream's single-precision product or
+// quotient, widened exactly afterwards (as `CompactLength::percent_of`), so a wider layout number
+// type leaves every size transferred through a ratio as it was.
+/// `value` times the aspect ratio `ratio`, as a single-precision product
+#[inline(always)]
+pub(crate) fn ratio_mul(value: LayoutFloat, ratio: f32) -> LayoutFloat {
+    LayoutFloat::from(value as f32 * ratio)
+}
+
+// VIPER-PATCH(layout-f64): see `ratio_mul`.
+/// `value` divided by the aspect ratio `ratio`, as a single-precision quotient
+#[inline(always)]
+pub(crate) fn ratio_div(value: LayoutFloat, ratio: f32) -> LayoutFloat {
+    LayoutFloat::from(value as f32 / ratio)
 }
 
 impl<T> Size<Option<T>> {
