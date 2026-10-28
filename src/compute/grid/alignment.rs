@@ -170,22 +170,24 @@ pub(super) fn align_and_position_item(
     // VIPER-PATCH(subgrid-placement): a subgrid is stretched in its subgridded axes, its sizes there ignored (CSS
     // Grid 2 section 9).
     let size_style = subgrid_unsized(style.size(), subgridded, Dimension::auto());
-    let inherent_size = size_style
-        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
+    // VIPER-PATCH(subgrid-placement): no ratio transfer into a subgridded axis.
+    let ratio = |size: Size<Option<LayoutFloat>>| subgrid_ratio(size, subgridded, aspect_ratio);
+    let inherent_size = ratio(size_style.maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis)))
         .maybe_add(box_sizing_adjustment);
     // VIPER-PATCH(subgrid-placement): ignored in a subgridded axis.
-    let min_size = subgrid_unsized(style.min_size(), subgridded, LengthPercentageAuto::auto())
-        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
-        .maybe_add(box_sizing_adjustment)
-        .or(padding_border_size.map(Some))
-        .maybe_max(padding_border_size)
-        .maybe_apply_aspect_ratio(aspect_ratio);
+    let min_size = ratio(
+        subgrid_unsized(style.min_size(), subgridded, LengthPercentageAuto::auto())
+            .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
+            .maybe_add(box_sizing_adjustment)
+            .or(padding_border_size.map(Some))
+            .maybe_max(padding_border_size),
+    );
     // VIPER-PATCH(subgrid-placement): ignored in a subgridded axis.
-    let max_size = subgrid_unsized(style.max_size(), subgridded, LengthPercentageAuto::auto())
-        .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    let max_size = ratio(
+        subgrid_unsized(style.max_size(), subgridded, LengthPercentageAuto::auto())
+            .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis)),
+    )
+    .maybe_add(box_sizing_adjustment);
 
     // Resolve `normal` alignment (the default if alignment is set on neither the parent or the node itself)
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched
@@ -323,7 +325,8 @@ pub(super) fn align_and_position_item(
     });
 
     // Reapply aspect ratio after stretch and absolute position width adjustments
-    let Size { width, height } = Size { width, height: inherent_size.height }.maybe_apply_aspect_ratio(aspect_ratio);
+    // VIPER-PATCH(subgrid-placement): never into a subgridded axis.
+    let Size { width, height } = ratio(Size { width, height: inherent_size.height });
 
     let height = height.or_else(|| {
         if position.is_out_of_flow() {
@@ -371,7 +374,8 @@ pub(super) fn align_and_position_item(
         None
     });
     // Reapply aspect ratio after stretch and absolute position height adjustments
-    let Size { width, height } = Size { width, height }.maybe_apply_aspect_ratio(aspect_ratio);
+    // VIPER-PATCH(subgrid-placement): never into a subgridded axis.
+    let Size { width, height } = ratio(Size { width, height });
 
     // Clamp size by min and max width/height
     let Size { width, height } = Size { width, height }.maybe_clamp(min_size, max_size);
@@ -615,5 +619,20 @@ where
     Size {
         width: if subgridded.horizontal { auto } else { sizes.width },
         height: if subgridded.vertical { auto } else { sizes.height },
+    }
+}
+
+/// `size` through the item's aspect ratio, except into an axis in which the item is a subgrid: it is stretched there
+/// whatever its other size (CSS Grid 2 section 9). A transfer out of a subgridded axis stays.
+// VIPER-PATCH(subgrid-placement): no ratio transfer into a subgridded axis.
+fn subgrid_ratio(
+    size: Size<Option<LayoutFloat>>,
+    subgridded: InBothAbsAxis<bool>,
+    aspect_ratio: Option<f32>,
+) -> Size<Option<LayoutFloat>> {
+    let through = size.maybe_apply_aspect_ratio(aspect_ratio);
+    Size {
+        width: if subgridded.horizontal { size.width } else { through.width },
+        height: if subgridded.vertical { size.height } else { through.height },
     }
 }

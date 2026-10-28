@@ -221,7 +221,8 @@ pub trait GridContainerStyle: CoreStyle {
     /// track list is ignored, `grid_template_column_names` or `grid_template_row_names` give the subgrid's own
     /// `<line-name-list>` (one set per line, repetitions expanded), and the tracks come from the parent grid
     /// ([`LayoutGridContainer::subgrid_tracks`](crate::LayoutGridContainer::subgrid_tracks)). False for a box that is
-    /// not a grid container: a parent grid asks it of its in-flow children too.
+    /// not a grid container, or one forced to establish an independent formatting context, such as one with layout
+    /// containment (section 9: its used value is then `none`): a parent grid asks it of its in-flow children too.
     // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
     #[inline(always)]
     fn grid_template_subgrid(&self, _axis: AbsoluteAxis) -> bool {
