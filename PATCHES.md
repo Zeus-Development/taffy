@@ -64,6 +64,7 @@ Branch: viper/taffy-0.15.0
 | `scroll-last-baseline` | `CoreStyle::baseline_source` and `CoreStyle::is_block_container`; a block container that is a block-axis scroll container with `baseline-source: auto` has its last baseline at its block-end margin edge (CSS Box Alignment 3 §9.1) | `adr:layout-scroll-last-baseline` | fork: `a_clipping_blocks_last_baseline_is_its_bottom_margin_edge`, `a_containers_last_baseline_can_be_its_clipping_childs_margin_edge`; Viper: `viper-layout::containment a_scroll_containers_last_baseline_is_its_bottom_margin_edge` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `layout-float-alias` | every layout number (computed sizes, positions, offsets, baselines, the available space, known and intrinsic sizes, track sizes and offsets, float segments, scrollable overflow, cache entries) has the type of one alias, `LayoutFloat = f32`, exported at the crate root and in the prelude; style values stay `f32`. Mechanical; behaviour-free; prepares `layout-f64` | `adr:layout-length-cap` (prepares it; later tasks close it) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_still_f32_sums` (since `layout-f64`: `layout_sums_are_exact_beyond_f32`), and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `layout-f64` | the alias becomes `LayoutFloat = f64`: layout arithmetic (sums, positions, offsets, the available space, track sizes, cache keys) is exact for every multiple of 1/64 px up to 2^46; style values stay `f32` and widen exactly where they are resolved; a percentage and a size through an aspect ratio stay upstream's single-precision products, widened; the `grid-fr-carry` loop stays single-precision | `adr:layout-length-cap` (Viper closes it with its own clamp removal) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_exact_beyond_f32`, `many_children_sum_exactly_in_layout_units`, `a_size_through_an_aspect_ratio_is_a_single_precision_product`, and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
+| `subgrid-placement` | subgrids (CSS Grid 2 section 9): `GridContainerStyle::grid_template_subgrid` (a `Style` field) says whether an axis is subgridded; a parent grid gives each subgrid item its spanned tracks' used sizes and their line names through `LayoutGridContainer::set_subgrid_tracks` around the item's final layout; in a subgridded axis the subgrid's explicit tracks are exactly those, its lines carry the parent's names beside its own, its items are clamped into the span, and it is stretched with its sizes ignored. Its items do not yet size the parent's tracks | `adr:layout-subgrid` (its placement part; V13b-2f3b closes it) | fork: `subgrid::a_subgrids_columns_are_its_parents`, `a_subgrids_edge_items_keep_clear_of_its_margin_border_and_padding`, `a_subgrids_items_are_placed_by_the_parents_and_its_own_line_names`, `an_item_beyond_the_subgrids_span_is_clamped_into_it`, `a_subgrids_rows_are_its_parents`, `a_right_to_left_subgrid_takes_its_parents_columns_in_reverse`, `a_nested_subgrid_takes_the_outer_grids_tracks`, `a_subgrid_outside_a_grid_has_implicit_tracks`; Viper: `viper-layout::subgrid a_subgrids_columns_and_line_names_are_its_parents` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -306,6 +307,57 @@ added and 150 removed lines under `src/` (markers and comments included),
 above the 100-line target, because each meeting point of a style value
 and a layout number is its own hunk with its own marker.
 
+### `subgrid-placement`
+
+CSS Grid 2 section 9, its first part (V13b-2f3a); V13b-2f3b adds the
+subgrid's items to the parent's track sizing.
+
+- **The style.** `GridContainerStyle::grid_template_subgrid(axis)`, `false`
+  by default, forwarded by the `&T` implementation; `Style` answers from its
+  field `grid_template_subgrid` (`x` the columns, `y` the rows). In a
+  subgridded axis the track template is ignored and the existing line-name
+  methods give the subgrid's own `<line-name-list>`, one set per line with
+  repetitions expanded.
+- **The channel** (`src/tree/traits.rs`). Taffy has no input from a parent's
+  layout to a child's but the tree: `LayoutInput` is a cache key, and a child
+  is laid out through the host's `compute_child_layout`. So
+  `LayoutGridContainer` gains `set_subgrid_tracks` and `subgrid_tracks`,
+  optional like `set_detailed_grid_info` (a no-op and `None`). A parent grid
+  stores a `SubgridTracks` (`src/compute/grid/subgrid.rs`, exported) for a
+  subgrid item just before the item's final layout and takes it back just
+  after; a host that caches layouts drops the item's cache when the value
+  changes. The item's intrinsic sizes during the parent's track sizing are
+  measured without it, as an ordinary grid, until V13b-2f3b.
+- **What the parent gives** (per subgridded axis): the used sizes of the
+  spanned tracks and of the gutters between them, alternating; a gutter is the
+  space between its tracks' used positions, so content distribution's space
+  is in it. And the names of the `n + 1` lines: the parent's named lines
+  (its own subgrid names included, so nesting works level by level) and the
+  `<area>-start` and `<area>-end` names of its areas' edges. A subgrid whose
+  inline direction runs against its parent's takes the columns and their
+  names in reverse.
+- **The subgrid's grid** (`compute_grid_layout`, when the tree holds tracks
+  for the node). In a subgridded axis: the explicit track count is the span,
+  with no repetition and whatever its own areas; its lines take the parent's
+  names beside its own; its items are placed as usual (hypothetical implicit
+  lines resolve their placement) and then clamped into the span as an
+  overlarge grid clamps them, since the axis has no implicit tracks; its
+  tracks are fixed at exactly the given sizes (`GridTrack::exact`, which track
+  sizing keeps), its first track less its margin, border and padding at its
+  start and its last less those at its end, never below zero, so its lines
+  fall on the parent's and its edge items keep clear of those edges. The
+  parent lays the subgrid out stretched in that axis, its `align-self` or
+  `justify-self` and its sizes there ignored.
+- **Not yet:** the subgrid's items in the parent's track sizing, with the
+  subgrid's margin, border and padding at the edge tracks and its gap
+  differences (V13b-2f3b: until then a subgrid's own `gap` is ignored in a
+  subgridded axis and the parent's gutters are used); baseline sharing
+  across the subgrid; `repeat(auto-fill, ...)` in a `<line-name-list>` is the
+  caller's to expand; an orthogonal subgrid is the caller's to give
+  transposed tracks; `TaffyTree` does not store subgrid tracks yet.
+- **Size.** About 250 changed code lines (the ledger's target is 100):
+  the task's plan allows the fork 500.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -372,3 +424,4 @@ Each Viper revision that moves its pin to this branch.
 | V10b-10s | `ec90f57687866cc4e54054147d7629f29a941bdc` | `size-containment`, `scroll-last-baseline` |
 | V13b-2i1a | the last commit of the range that adds this row | `layout-float-alias` |
 | V13b-2i1b | the last commit of the range that adds this row | `layout-f64` |
+| V13b-2f3a | the last commit of the range that adds this row | `subgrid-placement` |
