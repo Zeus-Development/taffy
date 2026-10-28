@@ -217,6 +217,17 @@ pub trait GridContainerStyle: CoreStyle {
     /// Defines the size of implicitly created rows
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>>;
 
+    /// Whether the container's template in `axis` is `subgrid` (CSS Grid 2 section 9). In a subgridded axis the
+    /// track list is ignored, `grid_template_column_names` or `grid_template_row_names` give the subgrid's own
+    /// `<line-name-list>` (one set per line, repetitions expanded), and the tracks come from the parent grid
+    /// ([`LayoutGridContainer::subgrid_tracks`](crate::LayoutGridContainer::subgrid_tracks)). False for a box that is
+    /// not a grid container: a parent grid asks it of its in-flow children too.
+    // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+    #[inline(always)]
+    fn grid_template_subgrid(&self, _axis: AbsoluteAxis) -> bool {
+        false
+    }
+
     /// Controls how items get placed into the grid for auto-placed items
     #[inline(always)]
     fn grid_auto_flow(&self) -> GridAutoFlow {

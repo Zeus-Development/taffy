@@ -442,6 +442,12 @@ fn initialize_track_sizes(
     axis_inner_node_size: Option<LayoutFloat>,
 ) {
     for track in axis_tracks.iter_mut() {
+        // VIPER-PATCH(subgrid-placement): a track of an exact size starts, and stays, at it.
+        if let Some(size) = track.exact_size {
+            track.base_size = size;
+            track.growth_limit = size;
+            continue;
+        }
         // For each track, if the track’s min track sizing function is:
         // - A fixed sizing function
         //     Resolve to an absolute length and use that size as the track’s initial base size.

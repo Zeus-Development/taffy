@@ -70,6 +70,10 @@ pub(in super::super) struct GridTrack {
     /// or the limit cannot be resolved). Resolved once per track sizing pass by `resolve_fit_content_limit`.
     // VIPER-PATCH(layout-float-alias): the alias.
     pub fit_content_limit: LayoutFloat,
+
+    /// A size the track has exactly, whatever its sizing functions: a subgridded axis's tracks are its parent's
+    // VIPER-PATCH(subgrid-placement): the parent's exact track size.
+    pub exact_size: Option<LayoutFloat>,
 }
 
 impl GridTrack {
@@ -94,7 +98,19 @@ impl GridTrack {
             infinitely_growable: false,
             // VIPER-PATCH(layout-float-alias): the alias.
             fit_content_limit: LayoutFloat::INFINITY,
+            // VIPER-PATCH(subgrid-placement): the parent's exact track size.
+            exact_size: None,
         }
+    }
+
+    /// A track or gutter of exactly `size`, a fixed track for the rest of the algorithm
+    // VIPER-PATCH(subgrid-placement): the parent's exact track size.
+    pub fn exact(kind: GridTrackKind, size: LayoutFloat) -> GridTrack {
+        let length = size as f32;
+        let mut track =
+            Self::new_with_kind(kind, MinTrackSizingFunction::length(length), MaxTrackSizingFunction::length(length));
+        track.exact_size = Some(size);
+        track
     }
 
     /// Create new GridTrack representing an actual track (not a gutter)

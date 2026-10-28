@@ -140,6 +140,9 @@ use crate::{BlockContainerStyle, BlockContext, BlockItemStyle};
 
 #[cfg(feature = "grid")]
 use crate::compute::grid::DetailedGridInfo;
+// VIPER-PATCH(subgrid-placement): the tracks a parent grid gives a subgrid, exported with the trait.
+#[cfg(feature = "grid")]
+pub use crate::compute::grid::{SubgridAxis, SubgridTracks};
 // VIPER-PATCH(layout-float-alias): the alias.
 use crate::LayoutFloat;
 
@@ -353,6 +356,22 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// the computed size of each grid track and the computed placement of each grid item.
     fn set_detailed_grid_info(&mut self, _node_id: NodeId, _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>) {
         debug_log!("LayoutGridContainer::set_detailed_grid_info called");
+    }
+
+    /// Give `node_id` the tracks and line names of its subgridded axes (CSS Grid 2 section 9), or take them away
+    /// (`None`). A parent grid calls it with `Some` just before it lays out a subgrid in its final grid area, and with
+    /// `None` just after; [`Self::subgrid_tracks`] answers them meanwhile.
+    ///
+    /// Implementing this method and [`Self::subgrid_tracks`] is optional: without them a subgrid is laid out as a
+    /// grid whose subgridded axes have no explicit tracks. A tree that caches layouts drops `node_id`'s cached
+    /// results when it stores a value different from the one it holds, since the layout depends on it.
+    // VIPER-PATCH(subgrid-placement): the parent's tracks given to a subgrid.
+    fn set_subgrid_tracks(&mut self, _node_id: NodeId, _tracks: Option<SubgridTracks<Self::CustomIdent>>) {}
+
+    /// The tracks [`Self::set_subgrid_tracks`] last gave `node_id`, if any
+    // VIPER-PATCH(subgrid-placement): the parent's tracks given to a subgrid.
+    fn subgrid_tracks(&self, _node_id: NodeId) -> Option<SubgridTracks<Self::CustomIdent>> {
+        None
     }
 }
 

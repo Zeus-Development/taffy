@@ -4,9 +4,10 @@ use crate::compute::common::alignment::{
     apply_alignment_fallback, compute_alignment_offset, resolve_self_alignment_safety,
 };
 use crate::geometry::{InBothAbsAxis, Line, Point, Rect, Size};
+// VIPER-PATCH(subgrid-placement): `Dimension` and `LengthPercentageAuto` for a subgrid's ignored sizes.
 use crate::style::{
-    AlignContent, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, CoreStyle, GridItemStyle, Overflow,
-    Position,
+    AlignContent, AlignItems, AlignItemsKeyword, AlignSelf, AvailableSpace, CoreStyle, Dimension, GridItemStyle,
+    LengthPercentageAuto, Overflow, Position,
 };
 // VIPER-PATCH(last-baseline): `Baselines` for the item's baselines.
 use crate::tree::{Baselines, Layout, LayoutPartialTreeExt, NodeId, OofCandidates, SizingMode};
@@ -95,6 +96,8 @@ pub(super) fn align_and_position_item(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     order: u32,
+    // VIPER-PATCH(subgrid-placement): the axes in which the item is a subgrid.
+    subgridded: InBothAbsAxis<bool>,
     // VIPER-PATCH(layout-float-alias): the alias.
     grid_area: Rect<LayoutFloat>,
     // Percentage basis for the item's styles. Grid passes the grid area size; grid lanes (css-grid-3) items
@@ -164,20 +167,22 @@ pub(super) fn align_and_position_item(
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-    let size_style = style.size();
+    // VIPER-PATCH(subgrid-placement): a subgrid is stretched in its subgridded axes, its sizes there ignored (CSS
+    // Grid 2 section 9).
+    let size_style = subgrid_unsized(style.size(), subgridded, Dimension::auto());
     let inherent_size = size_style
         .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
-    let min_size = style
-        .min_size()
+    // VIPER-PATCH(subgrid-placement): ignored in a subgridded axis.
+    let min_size = subgrid_unsized(style.min_size(), subgridded, LengthPercentageAuto::auto())
         .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_add(box_sizing_adjustment)
         .or(padding_border_size.map(Some))
         .maybe_max(padding_border_size)
         .maybe_apply_aspect_ratio(aspect_ratio);
-    let max_size = style
-        .max_size()
+    // VIPER-PATCH(subgrid-placement): ignored in a subgridded axis.
+    let max_size = subgrid_unsized(style.max_size(), subgridded, LengthPercentageAuto::auto())
         .maybe_resolve(containing_block_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
@@ -187,6 +192,9 @@ pub(super) fn align_and_position_item(
     // and the then height is calculated from the width according the aspect ratio
     // Replaced elements are not stretched: they are sized as for `start`.
     // See: https://www.w3.org/TR/css-grid-1/#grid-item-sizing
+    // VIPER-PATCH(subgrid-placement): stretched in a subgridded axis.
+    let justify_self = if subgridded.horizontal { AlignSelf::STRETCH } else { justify_self };
+    let align_self = if subgridded.vertical { AlignSelf::STRETCH } else { align_self };
     let alignment_styles = InBothAbsAxis {
         horizontal: match justify_self.keyword {
             AlignItemsKeyword::Normal => {
@@ -596,4 +604,16 @@ pub(super) fn align_item_within_area(
 
     // VIPER-PATCH(grid-baseline-margin): the margin without the baseline shim.
     (start, own_margin)
+}
+
+/// `sizes` with `auto` in the axes in which the item is a subgrid
+// VIPER-PATCH(subgrid-placement): a subgrid's sizes are ignored in its subgridded axes.
+fn subgrid_unsized<T>(sizes: Size<T>, subgridded: InBothAbsAxis<bool>, auto: T) -> Size<T>
+where
+    T: Copy,
+{
+    Size {
+        width: if subgridded.horizontal { auto } else { sizes.width },
+        height: if subgridded.vertical { auto } else { sizes.height },
+    }
 }

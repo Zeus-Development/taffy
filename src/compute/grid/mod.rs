@@ -21,6 +21,8 @@ use alignment::{align_and_position_item, align_tracks};
 use explicit_grid::{compute_explicit_grid_size_in_axis, initialize_grid_tracks, AutoRepeatStrategy};
 use implicit_grid::compute_grid_size_estimate;
 use placement::{place_grid_items, ItemPlacement};
+// VIPER-PATCH(subgrid-placement): the parent's view of its subgrid items.
+use subgrid::SubgridItem;
 use track_sizing::{
     determine_if_item_crosses_flexible_or_intrinsic_tracks, resolve_item_track_indexes, track_sizing_algorithm,
 };
@@ -34,6 +36,8 @@ use types::{GridItem, GridTrackKind, TrackCounts};
 pub(crate) use types::{GridCoordinate, GridLine, OriginZeroLine, MAX_GRID_TRACKS, MAX_OZ_LINE, MIN_OZ_LINE};
 
 pub use types::{GridLineNames, GridLineNamesIter};
+// VIPER-PATCH(subgrid-placement): the tracks a parent grid gives a subgrid.
+pub use subgrid::{SubgridAxis, SubgridTracks};
 // VIPER-PATCH(layout-float-alias): the alias.
 use crate::LayoutFloat;
 
@@ -41,6 +45,8 @@ mod alignment;
 mod explicit_grid;
 mod implicit_grid;
 mod placement;
+// VIPER-PATCH(subgrid-placement): the module.
+mod subgrid;
 mod track_sizing;
 mod types;
 mod util;
@@ -288,6 +294,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
     let grid_template_rows = style.grid_template_rows();
     let grid_auto_columns = style.grid_auto_columns();
     let grid_auto_rows = style.grid_auto_rows();
+    // VIPER-PATCH(subgrid-placement): the parent's tracks of the subgridded axes, when a parent gave them.
+    let given = subgrid::given(tree.subgrid_tracks(node));
 
     debug_log!("parent_size", dbg:inputs.parent_size);
     debug_log!("outer_node_size", dbg:outer_node_size);
@@ -346,6 +354,11 @@ fn grid_layout<Tree: LayoutGridContainer>(
         |val, basis| tree.calc(val, basis),
         AbsoluteAxis::Vertical,
     );
+    // VIPER-PATCH(subgrid-placement): a subgridded axis's explicit tracks are the parent's it spans.
+    let (col_auto_repetition_count, grid_template_col_count) =
+        subgrid::explicit_counts(&given.horizontal, (col_auto_repetition_count, grid_template_col_count));
+    let (row_auto_repetition_count, grid_template_row_count) =
+        subgrid::explicit_counts(&given.vertical, (row_auto_repetition_count, grid_template_row_count));
 
     // type CustomIdent<'a> = <<Tree as LayoutPartialTree>::CoreContainerStyle<'_> as CoreStyle>::CustomIdent;
     let mut name_resolver = NamedLineResolver::new(&style, col_auto_repetition_count, row_auto_repetition_count);
@@ -354,9 +367,19 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // https://www.w3.org/TR/css-grid-1/#overlarge-grids
     let explicit_col_count = grid_template_col_count.max(name_resolver.area_column_count()).min(MAX_GRID_TRACKS);
     let explicit_row_count = grid_template_row_count.max(name_resolver.area_row_count()).min(MAX_GRID_TRACKS);
+    // VIPER-PATCH(subgrid-placement): whatever the subgrid's own areas.
+    let explicit_col_count = if given.horizontal.is_some() { grid_template_col_count } else { explicit_col_count };
+    let explicit_row_count = if given.vertical.is_some() { grid_template_row_count } else { explicit_row_count };
 
     name_resolver.set_explicit_column_count(explicit_col_count);
     name_resolver.set_explicit_row_count(explicit_row_count);
+    // VIPER-PATCH(subgrid-placement): a subgridded axis's lines take the parent's names too.
+    if let Some(axis) = &given.horizontal {
+        name_resolver.add_line_names(AbsoluteAxis::Horizontal, &axis.line_names);
+    }
+    if let Some(axis) = &given.vertical {
+        name_resolver.add_line_names(AbsoluteAxis::Vertical, &axis.line_names);
+    }
 
     // Build the per-line names of the explicit grid from the name resolver's collected pairs
     let mut detailed_column_line_names = name_resolver.detailed_line_names(AbsoluteAxis::Horizontal);
@@ -370,6 +393,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
     let child_count = if as_if_empty { 0 } else { tree.child_count(node) };
     let mut items: Vec<GridItem> = Vec::with_capacity(child_count);
     let mut placements: Vec<ItemPlacement> = Vec::with_capacity(child_count);
+    // VIPER-PATCH(subgrid-placement): the items that are subgrids: index, subgridded axes, reversed columns.
+    let mut subgrid_axes: Vec<(usize, InBothAbsAxis<bool>, bool)> = Vec::new();
     // VIPER-PATCH(size-containment): no child when sized as if empty.
     for (index, child_node) in tree.child_ids(node).enumerate().take(child_count) {
         let child_style = tree.get_grid_child_style(child_node);
@@ -382,6 +407,16 @@ fn grid_layout<Tree: LayoutGridContainer>(
                 .into_origin_zero(explicit_col_count),
             vertical: name_resolver.resolve_row_names(&child_style.grid_row()).into_origin_zero(explicit_row_count),
         });
+        // VIPER-PATCH(subgrid-placement): the items that are subgrids.
+        let item_style = tree.get_grid_container_style(child_node);
+        let axes = InBothAbsAxis {
+            horizontal: item_style.grid_template_subgrid(AbsoluteAxis::Horizontal),
+            vertical: item_style.grid_template_subgrid(AbsoluteAxis::Vertical),
+        };
+        if axes.horizontal || axes.vertical {
+            subgrid_axes.push((items.len(), axes, axes.horizontal && item_style.direction() != direction));
+        }
+        drop(item_style);
         items.push(GridItem::new_with_style_and_order(
             child_node,
             child_style,
@@ -407,6 +442,15 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // Extract track counts from previous step (auto-placement can expand the number of tracks)
     let final_col_counts = *cell_occupancy_matrix.track_counts(AbsoluteAxis::Horizontal);
     let final_row_counts = *cell_occupancy_matrix.track_counts(AbsoluteAxis::Vertical);
+    // VIPER-PATCH(subgrid-placement): a subgridded axis has no implicit tracks.
+    let mut final_counts = InBothAbsAxis { horizontal: final_col_counts, vertical: final_row_counts };
+    subgrid::clamp_items(&given, &mut items, &mut final_counts);
+    let InBothAbsAxis { horizontal: final_col_counts, vertical: final_row_counts } = final_counts;
+    // VIPER-PATCH(subgrid-placement): the names of the lines the subgrid items span.
+    let subgrids: Vec<SubgridItem<_>> = subgrid_axes
+        .into_iter()
+        .map(|(index, axes, reversed)| SubgridItem::new(index, &items[index], axes, reversed, &name_resolver))
+        .collect();
 
     // 5. Initialize Tracks
     // Initialize (explicit and implicit) grid tracks (and gutters)
@@ -429,6 +473,17 @@ fn grid_layout<Tree: LayoutGridContainer>(
         row_auto_repetition_count,
         |row_index| cell_occupancy_matrix.row_is_occupied(row_index),
     );
+    // VIPER-PATCH(subgrid-placement): a subgridded axis's tracks are the parent's.
+    if given.horizontal.is_some() || given.vertical.is_some() {
+        let margin = style.margin().resolve_or_zero(inputs.parent_size.width, |val, basis| tree.calc(val, basis));
+        let insets = subgrid::insets(margin + content_box_inset, direction.is_rtl());
+        if let Some(axis) = &given.horizontal {
+            subgrid::parent_tracks(&mut columns, axis, insets.horizontal);
+        }
+        if let Some(axis) = &given.vertical {
+            subgrid::parent_tracks(&mut rows, axis, insets.vertical);
+        }
+    }
 
     drop(grid_template_rows);
     drop(grid_template_columns);
@@ -748,6 +803,11 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // VIPER-PATCH(last-baseline): through one function, which `justify-self: last baseline` groups call twice.
     // VIPER-PATCH(layout-float-alias): the alias.
     let position_item = |tree: &mut Tree, index: usize, item: &mut GridItem, inline_shims: Line<LayoutFloat>| {
+        // VIPER-PATCH(subgrid-placement): a subgrid lays its subgridded axes out in the parent's final tracks.
+        let subgrid = subgrids.binary_search_by_key(&index, |subgrid| subgrid.index).ok().map(|at| &subgrids[at]);
+        if let Some(subgrid) = subgrid {
+            tree.set_subgrid_tracks(item.node, Some(subgrid.tracks(item, &columns, &rows, direction.is_rtl())));
+        }
         // Tracks are stored in logical order. In RTL the physical offsets are assigned
         // right-to-left, so an item's physical left edge is derived from its logical end
         // line and its physical right edge from its logical start line.
@@ -765,10 +825,13 @@ fn grid_layout<Tree: LayoutGridContainer>(
                 columns[item.column_indexes.end as usize].offset
             },
         };
-        align_and_position_item(
+        // VIPER-PATCH(subgrid-placement): the item's placement, kept until its tracks are taken back.
+        let placed = align_and_position_item(
             tree,
             item.node,
             index as u32,
+            // VIPER-PATCH(subgrid-placement): its subgridded axes.
+            subgrid.map_or(InBothAbsAxis { horizontal: false, vertical: false }, |subgrid| subgrid.axes),
             grid_area,
             Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top },
             container_alignment_styles,
@@ -779,7 +842,12 @@ fn grid_layout<Tree: LayoutGridContainer>(
             #[cfg(feature = "content_size")]
             is_scroll_container,
             &mut item.oof_candidates,
-        )
+        );
+        // VIPER-PATCH(subgrid-placement): its tracks only for that layout.
+        if subgrid.is_some() {
+            tree.set_subgrid_tracks(item.node, None);
+        }
+        placed
     };
     let inline_shims = justify_last_baseline_shims(&mut items, direction, |index, item| {
         let (_, location, _, _) = position_item(tree, index, item, Line { start: 0.0, end: 0.0 });

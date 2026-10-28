@@ -449,6 +449,8 @@ fn build_style<S: CheapCloneStr>(xnode: roxmltree::Node) -> taffy::Style<S> {
 
         grid_template_columns: grid_template_columns.tracks,
         grid_template_column_names: grid_template_columns.line_names,
+        // VIPER-PATCH(subgrid-placement): the field (the fixtures have no subgrid).
+        grid_template_subgrid: taffy::Point { x: false, y: false },
 
         // TODO
         grid_auto_rows: parse_or_default::<GridAutoTracks>(xnode.attribute("grid-auto-rows")).0,

@@ -773,3 +773,344 @@ fn a_size_through_an_aspect_ratio_is_a_single_precision_product() {
     assert_eq!(taffy.layout(flowed).unwrap().size.width, 100.0);
     assert_eq!(taffy.layout(absolute).unwrap().size.width, 100.0);
 }
+
+// VIPER-PATCH(subgrid-placement): a subgridded axis uses the parent's tracks and line names, its items are placed in
+// them and clamped into them, and they are laid out in the parent's final track sizes (CSS Grid 2 section 9).
+mod subgrid {
+    use taffy::prelude::*;
+    use taffy::{
+        compute_cached_layout, compute_grid_layout, compute_leaf_layout, compute_root_layout, Cache, CacheTree,
+        Direction, GridAutoFlow, GridPlacement, GridTemplateArea, GridTemplateAreas, Layout, LayoutFloat, LayoutInput,
+        LayoutOutput, Point, SubgridTracks,
+    };
+
+    /// A box of the test tree: a grid when its style says so, otherwise a leaf 10px high when its height is not
+    /// known
+    struct Node {
+        style: Style<String>,
+        children: Vec<usize>,
+        cache: Cache,
+        layout: Layout,
+        tracks: Option<SubgridTracks<String>>,
+    }
+
+    /// A tree that gives subgrids their parent's tracks, which `TaffyTree` does not yet
+    #[derive(Default)]
+    struct Tree(Vec<Node>);
+
+    impl Tree {
+        fn add(&mut self, style: Style<String>, children: Vec<usize>) -> usize {
+            let layout = Layout::with_order(0);
+            self.0.push(Node { style, children, cache: Cache::new(), layout, tracks: None });
+            self.0.len() - 1
+        }
+
+        fn leaf(&mut self, style: Style<String>) -> usize {
+            self.add(style, vec![])
+        }
+
+        fn node(&self, id: NodeId) -> &Node {
+            &self.0[usize::from(id)]
+        }
+
+        fn node_mut(&mut self, id: NodeId) -> &mut Node {
+            &mut self.0[usize::from(id)]
+        }
+
+        /// `node`'s location and size, relative to its parent's border box
+        fn rect(&self, node: usize) -> (LayoutFloat, LayoutFloat, LayoutFloat, LayoutFloat) {
+            let layout = &self.0[node].layout;
+            (layout.location.x, layout.location.y, layout.size.width, layout.size.height)
+        }
+
+        fn lay_out(&mut self, root: usize) {
+            compute_root_layout(self, NodeId::from(root), Size::MAX_CONTENT);
+        }
+    }
+
+    struct ChildIter(std::vec::IntoIter<usize>);
+    impl Iterator for ChildIter {
+        type Item = NodeId;
+        fn next(&mut self) -> Option<NodeId> {
+            self.0.next().map(NodeId::from)
+        }
+    }
+
+    impl TraversePartialTree for Tree {
+        type ChildIter<'a> = ChildIter;
+        fn child_ids(&self, id: NodeId) -> ChildIter {
+            ChildIter(self.node(id).children.clone().into_iter())
+        }
+        fn child_count(&self, id: NodeId) -> usize {
+            self.node(id).children.len()
+        }
+        fn get_child_id(&self, id: NodeId, index: usize) -> NodeId {
+            NodeId::from(self.node(id).children[index])
+        }
+    }
+
+    impl LayoutPartialTree for Tree {
+        type CoreContainerStyle<'a> = &'a Style<String>;
+        type CustomIdent = String;
+        fn get_core_container_style(&self, id: NodeId) -> &Style<String> {
+            &self.node(id).style
+        }
+        fn set_unrounded_layout(&mut self, id: NodeId, layout: &Layout) {
+            self.node_mut(id).layout = *layout;
+        }
+        fn resolve_calc_value(&self, _val: *const (), _basis: LayoutFloat) -> LayoutFloat {
+            0.0
+        }
+        fn compute_child_layout(&mut self, id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+            compute_cached_layout(self, id, inputs, |tree, id, inputs| {
+                if tree.node(id).style.display == Display::Grid {
+                    return compute_grid_layout(tree, id, inputs);
+                }
+                compute_leaf_layout(
+                    inputs,
+                    &tree.node(id).style,
+                    |_, _| 0.0,
+                    |known, _| Size { width: known.width.unwrap_or(0.0), height: known.height.unwrap_or(10.0) },
+                )
+            })
+        }
+    }
+
+    impl CacheTree for Tree {
+        fn cache_get(&mut self, id: NodeId, inputs: &LayoutInput) -> Option<LayoutOutput> {
+            self.node_mut(id).cache.get(inputs)
+        }
+        fn cache_store(&mut self, id: NodeId, inputs: &LayoutInput, output: LayoutOutput) {
+            self.node_mut(id).cache.store(inputs, output)
+        }
+        fn cache_clear(&mut self, id: NodeId) {
+            self.node_mut(id).cache.clear();
+        }
+    }
+
+    impl taffy::LayoutContainingBlock for Tree {
+        type OofItemStyle<'a> = &'a Style<String>;
+        fn get_oof_item_style(&self, id: NodeId) -> &Style<String> {
+            &self.node(id).style
+        }
+        fn clear_hoisted_children(&mut self, _id: NodeId) {}
+        fn add_hoisted_children(&mut self, _id: NodeId, _hoisted: &[NodeId]) {}
+    }
+
+    impl taffy::LayoutGridContainer for Tree {
+        type GridContainerStyle<'a> = &'a Style<String>;
+        type GridItemStyle<'a> = &'a Style<String>;
+        fn get_grid_container_style(&self, id: NodeId) -> &Style<String> {
+            &self.node(id).style
+        }
+        fn get_grid_child_style(&self, id: NodeId) -> &Style<String> {
+            &self.node(id).style
+        }
+        fn set_subgrid_tracks(&mut self, id: NodeId, tracks: Option<SubgridTracks<String>>) {
+            let node = self.node_mut(id);
+            if node.tracks != tracks {
+                node.tracks = tracks;
+                node.cache.clear();
+            }
+        }
+        fn subgrid_tracks(&self, id: NodeId) -> Option<SubgridTracks<String>> {
+            self.node(id).tracks.clone()
+        }
+    }
+
+    fn columns(sizes: &[f32]) -> Vec<GridTemplateComponent<String>> {
+        sizes.iter().map(|size| length(*size)).collect()
+    }
+
+    fn names(sets: &[&[&str]]) -> Vec<Vec<String>> {
+        sets.iter().map(|set| set.iter().map(|name| name.to_string()).collect()).collect()
+    }
+
+    fn columns_at(start: i16, end: i16) -> Line<GridPlacement<String>> {
+        Line { start: line(start), end: line(end) }
+    }
+
+    /// A grid with columns 50px, 100px and 150px and a 10px column gap (lines at 0, 60, 170 and 320) and rows of
+    /// 10px, with one child. Its rows are fixed: a subgrid's items do not size its parent's tracks yet (V13b-2f3b).
+    fn parent(tree: &mut Tree, child: usize, style: Style<String>) -> usize {
+        let parent = Style {
+            display: Display::Grid,
+            grid_template_columns: columns(&[50.0, 100.0, 150.0]),
+            grid_auto_rows: vec![length(10.0)],
+            gap: Size { width: length(10.0), height: zero() },
+            ..style
+        };
+        tree.add(parent, vec![child])
+    }
+
+    fn subgrid_columns(style: Style<String>) -> Style<String> {
+        Style { display: Display::Grid, grid_template_subgrid: Point { x: true, y: false }, ..style }
+    }
+
+    /// Section 9: "the subgrid's own grid tracks are the parent's tracks it spans"; its items, auto-placed one per
+    /// track, take the parent's widths and positions, gaps included.
+    #[test]
+    fn a_subgrids_columns_are_its_parents() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..3).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style { grid_column: columns_at(1, 4), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = parent(&mut tree, subgrid, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 320.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 50.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (60.0, 0.0, 100.0, 10.0));
+        assert_eq!(tree.rect(items[2]), (170.0, 0.0, 150.0, 10.0));
+    }
+
+    /// Section 9: the subgrid's margin, border and padding do not move its lines; its edge items keep clear of them.
+    /// Spanning lines 2 to 4 (60 to 320) with a 3px left margin, a 2px left border and 5px left padding, its first
+    /// track is 100 - 10 = 90px from x 70, and its second is the parent's third, at 170.
+    #[test]
+    fn a_subgrids_edge_items_keep_clear_of_its_margin_border_and_padding() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style {
+            grid_column: columns_at(2, 4),
+            margin: Rect { left: length(3.0), right: zero(), top: zero(), bottom: zero() },
+            border: Rect { left: length(2.0), right: zero(), top: zero(), bottom: zero() },
+            padding: Rect { left: length(5.0), right: zero(), top: zero(), bottom: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = parent(&mut tree, subgrid, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (63.0, 0.0, 257.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (7.0, 0.0, 90.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (107.0, 0.0, 150.0, 10.0));
+    }
+
+    /// Section 9: the subgrid's lines carry the parent's names in its span (explicit names and the implicit
+    /// `<area>-start` and `<area>-end`) and its own `<line-name-list>`.
+    #[test]
+    fn a_subgrids_items_are_placed_by_the_parents_and_its_own_line_names() {
+        let mut tree = Tree::default();
+        let named = |start: &str, end: &str| Line {
+            start: GridPlacement::NamedLine(start.to_string(), 1),
+            end: GridPlacement::NamedLine(end.to_string(), 1),
+        };
+        let by_parent = tree.leaf(Style { grid_column: named("c", "d"), ..Style::default() });
+        let by_own = tree.leaf(Style { grid_column: named("x", "y"), ..Style::default() });
+        let by_area = tree.leaf(Style { grid_column: named("side-start", "side-end"), ..Style::default() });
+        let subgrid = Style {
+            grid_column: columns_at(2, 4),
+            grid_template_column_names: names(&[&["x"], &["y"], &[]]),
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, vec![by_parent, by_own, by_area]);
+        let area =
+            GridTemplateArea { name: "side".to_string(), row_start: 1, row_end: 2, column_start: 3, column_end: 4 };
+        let root = parent(
+            &mut tree,
+            subgrid,
+            Style {
+                grid_template_column_names: names(&[&["a"], &["b"], &["c"], &["d"]]),
+                grid_template_areas: Some(GridTemplateAreas { areas: vec![area], row_count: 1, column_count: 3 }),
+                ..Style::default()
+            },
+        );
+        tree.lay_out(root);
+        assert_eq!(tree.rect(by_parent).0, 110.0);
+        assert_eq!(tree.rect(by_parent).2, 150.0);
+        assert_eq!(tree.rect(by_own).0, 0.0);
+        assert_eq!(tree.rect(by_own).2, 100.0);
+        assert_eq!(tree.rect(by_area).0, 110.0);
+    }
+
+    /// Section 9: a subgridded axis has no implicit tracks; an item placed beyond the span is clamped into it as in
+    /// an overlarge grid: one ending beyond it ends at its last line, one entirely beyond it takes its last track.
+    #[test]
+    fn an_item_beyond_the_subgrids_span_is_clamped_into_it() {
+        let mut tree = Tree::default();
+        let beyond = tree.leaf(Style { grid_column: columns_at(5, 7), ..Style::default() });
+        let across = tree.leaf(Style { grid_column: columns_at(1, 9), ..Style::default() });
+        let subgrid = Style { grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, vec![beyond, across]);
+        let root = parent(&mut tree, subgrid, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid).2, 160.0);
+        assert_eq!((tree.rect(beyond).0, tree.rect(beyond).2), (60.0, 100.0));
+        assert_eq!((tree.rect(across).0, tree.rect(across).2), (0.0, 160.0));
+    }
+
+    /// Section 9: subgridded rows work as columns do: rows 20px and 30px with a 5px row gap.
+    #[test]
+    fn a_subgrids_rows_are_its_parents() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style {
+            grid_row: columns_at(1, 3),
+            grid_auto_flow: GridAutoFlow::Column,
+            display: Display::Grid,
+            grid_template_subgrid: Point { x: false, y: true },
+            ..Style::default()
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = Style {
+            display: Display::Grid,
+            size: Size { width: length(40.0), height: auto() },
+            grid_template_rows: columns(&[20.0, 30.0]),
+            gap: Size { width: zero(), height: length(5.0) },
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 40.0, 55.0));
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 40.0, 20.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 25.0, 40.0, 30.0));
+    }
+
+    /// Section 9: a subgrid whose inline direction runs against its parent's takes the parent's columns in reverse:
+    /// a right-to-left subgrid over 50px and 100px columns starts with the 100px one, on the right.
+    #[test]
+    fn a_right_to_left_subgrid_takes_its_parents_columns_in_reverse() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid =
+            Style { direction: Direction::Rtl, grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: columns(&[50.0, 100.0]),
+            grid_auto_rows: vec![length(10.0)],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(items[0]), (50.0, 0.0, 100.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 0.0, 50.0, 10.0));
+    }
+
+    /// Section 9: a subgrid nested in a subgrid takes its tracks from it, which has them from its own parent.
+    #[test]
+    fn a_nested_subgrid_takes_the_outer_grids_tracks() {
+        let mut tree = Tree::default();
+        let item = tree.leaf(Style { grid_column: columns_at(2, 3), ..Style::default() });
+        let inner = Style { grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let inner = tree.add(inner, vec![item]);
+        let outer = Style { grid_column: columns_at(2, 4), ..subgrid_columns(Style::default()) };
+        let outer = tree.add(outer, vec![inner]);
+        let root = parent(&mut tree, outer, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(outer).0, 60.0);
+        assert_eq!(tree.rect(inner), (0.0, 0.0, 260.0, 10.0));
+        assert_eq!(tree.rect(item), (110.0, 0.0, 150.0, 10.0));
+    }
+
+    /// Section 9: a grid that is not a grid item is not a subgrid: its subgridded axis has implicit tracks only.
+    #[test]
+    fn a_subgrid_outside_a_grid_has_implicit_tracks() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let root = Style { size: Size { width: length(80.0), height: auto() }, ..subgrid_columns(Style::default()) };
+        let root = tree.add(root, items.clone());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 80.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 10.0, 80.0, 10.0));
+    }
+}

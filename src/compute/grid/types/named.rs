@@ -598,6 +598,59 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
         self.areas
     }
 
+    /// The names of the `count + 1` lines from origin-zero line `start` in `axis`, for a subgrid spanning them (CSS
+    /// Grid 2 section 9): the named lines, the parent's own subgrid names included, and the `<area>-start` and
+    /// `<area>-end` names of the areas' edges
+    // VIPER-PATCH(subgrid-placement): a subgrid's lines take the parent's names.
+    pub(crate) fn span_line_names(&self, axis: AbsoluteAxis, start: OriginZeroLine, count: u16) -> Vec<Vec<S>> {
+        let (lines, area_axis) = match axis {
+            AbsoluteAxis::Horizontal => (&self.column_lines, GridAreaAxis::Column),
+            AbsoluteAxis::Vertical => (&self.row_lines, GridAreaAxis::Row),
+        };
+        let mut names: Vec<Vec<S>> = (0..=count).map(|_| Vec::new()).collect();
+        // A one-indexed line `l` is the origin-zero line `l - 1`
+        let first = i32::from(start.0) + 1;
+        let mut add = |line: u32, name: S| {
+            let at = line as i32 - first;
+            if let Some(set) = usize::try_from(at).ok().and_then(|at| names.get_mut(at)) {
+                if !set.contains(&name) {
+                    set.push(name);
+                }
+            }
+        };
+        for (name, at) in lines.iter() {
+            at.iter().for_each(|line| add(*line, name.0.clone()));
+        }
+        for (name, area) in self.areas.iter() {
+            for (end, suffix) in [(GridAreaEnd::Start, "-start"), (GridAreaEnd::End, "-end")] {
+                if let Some(line) = area.line(area_axis, end) {
+                    let mut edge = crate::sys::String::from(name.0.as_ref());
+                    edge.push_str(suffix);
+                    add(*line, S::from(edge));
+                }
+            }
+        }
+        names
+    }
+
+    /// Name a subgridded axis's lines with its parent's names (`names[i]` names line `i + 1`), beside its own
+    // VIPER-PATCH(subgrid-placement): a subgrid's lines take the parent's names.
+    pub(crate) fn add_line_names(&mut self, axis: AbsoluteAxis, names: &[Vec<S>]) {
+        let (map, area_axis) = match axis {
+            AbsoluteAxis::Horizontal => (&mut self.column_lines, GridAreaAxis::Column),
+            AbsoluteAxis::Vertical => (&mut self.row_lines, GridAreaAxis::Row),
+        };
+        for (line, set) in (1u32..).zip(names) {
+            for name in set {
+                upsert_line_name_map(map, &mut self.areas, area_axis, name.clone(), line);
+            }
+        }
+        for lines in map.values_mut() {
+            lines.sort_unstable();
+            lines.dedup();
+        }
+    }
+
     /// Get the number of columns defined by the grid areas
     pub(crate) fn area_column_count(&self) -> u16 {
         self.area_column_count

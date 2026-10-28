@@ -942,6 +942,13 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// The named lines between the rows
     #[cfg(feature = "grid")]
     pub grid_template_row_names: GridTrackVec<GridTrackVec<S>>,
+    /// Whether the columns (`x`) and the rows (`y`) are `subgrid` (CSS Grid 2 section 9): see
+    /// [`GridContainerStyle::grid_template_subgrid`]. A subgrid takes its tracks from its parent grid only in a tree
+    /// that implements [`LayoutGridContainer::set_subgrid_tracks`](crate::LayoutGridContainer::set_subgrid_tracks)
+    /// (`TaffyTree` does not yet).
+    // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+    #[cfg(feature = "grid")]
+    pub grid_template_subgrid: Point<bool>,
 
     // Grid child properties
     /// Defines which row in the grid the item should start and end at
@@ -1020,6 +1027,9 @@ impl<S: CheapCloneStr> Style<S> {
         grid_template_column_names: GridTrackVec::new(),
         #[cfg(feature = "grid")]
         grid_template_row_names: GridTrackVec::new(),
+        // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+        #[cfg(feature = "grid")]
+        grid_template_subgrid: Point { x: false, y: false },
         #[cfg(feature = "grid")]
         grid_auto_rows: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -1585,6 +1595,14 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
         Some(self.grid_template_row_names.iter().map(|names| names.iter()))
     }
+    // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+    #[inline(always)]
+    fn grid_template_subgrid(&self, axis: crate::geometry::AbsoluteAxis) -> bool {
+        match axis {
+            crate::geometry::AbsoluteAxis::Horizontal => self.grid_template_subgrid.x,
+            crate::geometry::AbsoluteAxis::Vertical => self.grid_template_subgrid.y,
+        }
+    }
 }
 
 #[cfg(feature = "grid")]
@@ -1654,6 +1672,12 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
         (*self).grid_template_row_names()
+    }
+    // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_template_subgrid(&self, axis: crate::geometry::AbsoluteAxis) -> bool {
+        (*self).grid_template_subgrid(axis)
     }
     #[inline(always)]
     fn grid_auto_flow(&self) -> GridAutoFlow {
@@ -1795,6 +1819,9 @@ mod tests {
             grid_template_row_names: Default::default(),
             #[cfg(feature = "grid")]
             grid_template_column_names: Default::default(),
+            // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
+            #[cfg(feature = "grid")]
+            grid_template_subgrid: Point { x: false, y: false },
             #[cfg(feature = "grid")]
             grid_template_areas: Default::default(),
             #[cfg(feature = "grid")]
