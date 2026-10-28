@@ -1113,4 +1113,141 @@ mod subgrid {
         assert_eq!(tree.rect(items[0]), (0.0, 0.0, 80.0, 10.0));
         assert_eq!(tree.rect(items[1]), (0.0, 10.0, 80.0, 10.0));
     }
+
+    /// A right-to-left grid with columns 50px and 100px and a 10px gap in 160px: the 50px column on the right
+    /// (110 to 160), the 100px one on the left (0 to 100).
+    fn right_to_left_parent(tree: &mut Tree, child: usize) -> usize {
+        let root = Style {
+            display: Display::Grid,
+            direction: Direction::Rtl,
+            size: Size { width: length(160.0), height: auto() },
+            grid_template_columns: columns(&[50.0, 100.0]),
+            grid_auto_rows: vec![length(10.0)],
+            gap: Size { width: length(10.0), height: zero() },
+            ..Style::default()
+        };
+        tree.add(root, vec![child])
+    }
+
+    /// The span's sizes from a right-to-left parent's used positions, gap included: a left-to-right subgrid takes
+    /// the columns in reverse, its first track the parent's 100px one on the left.
+    #[test]
+    fn a_right_to_left_parent_gives_a_left_to_right_subgrid_its_columns_in_reverse() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid =
+            Style { direction: Direction::Ltr, grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = right_to_left_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 160.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 100.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (110.0, 0.0, 50.0, 10.0));
+    }
+
+    /// A right-to-left subgrid of a right-to-left parent keeps the parent's order: its first track is the 50px one
+    /// on the right.
+    #[test]
+    fn a_right_to_left_parent_gives_a_right_to_left_subgrid_its_columns_in_order() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid =
+            Style { direction: Direction::Rtl, grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = right_to_left_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(items[0]), (110.0, 0.0, 50.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 0.0, 100.0, 10.0));
+    }
+
+    /// A right-to-left subgrid's inline start is its right edge: over the parent's 100px and 150px columns (60 to
+    /// 320) with a 3px right margin, a 2px right border and 5px right padding, its first track is the 150px column
+    /// less 10px, ending at its content box's right edge (250), and its second the 100px column at 0.
+    #[test]
+    fn a_right_to_left_subgrids_start_edge_is_its_right_edge() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style {
+            direction: Direction::Rtl,
+            grid_column: columns_at(2, 4),
+            margin: Rect { left: zero(), right: length(3.0), top: zero(), bottom: zero() },
+            border: Rect { left: zero(), right: length(2.0), top: zero(), bottom: zero() },
+            padding: Rect { left: zero(), right: length(5.0), top: zero(), bottom: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = parent(&mut tree, subgrid, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (60.0, 0.0, 257.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (110.0, 0.0, 140.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 0.0, 100.0, 10.0));
+    }
+
+    /// Section 9: a subgrid is stretched in its subgridded axis whatever its aspect ratio: 10px high with
+    /// `aspect-ratio: 1`, it is as wide as its three columns (320px), not 10px.
+    #[test]
+    fn a_subgrid_is_stretched_in_its_subgridded_axis_whatever_its_aspect_ratio() {
+        let mut tree = Tree::default();
+        let items: Vec<usize> = (0..3).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style {
+            grid_column: columns_at(1, 4),
+            size: Size { width: auto(), height: length(10.0) },
+            aspect_ratio: Some(1.0),
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = parent(&mut tree, subgrid, Style::default());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 320.0, 10.0));
+    }
+
+    /// The span's gutters include the parent's content distribution and are exact: four 50px columns spaced
+    /// between in 300px have gutters of 100/3px, which no `f32` holds; the subgrid's items stand exactly where
+    /// plain items in the same columns do.
+    #[test]
+    fn a_subgrids_gutters_take_the_parents_distributed_space_exactly() {
+        let mut tree = Tree::default();
+        let row = |row: i16| Line { start: line(row), end: line(row + 1) };
+        let in_subgrid: Vec<usize> = (0..4).map(|_| tree.leaf(Style::default())).collect();
+        let subgrid = Style { grid_column: columns_at(1, 5), grid_row: row(1), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, in_subgrid.clone());
+        let plain: Vec<usize> = (0..4i16)
+            .map(|at| {
+                tree.leaf(Style { grid_column: columns_at(at + 1, at + 2), grid_row: row(2), ..Style::default() })
+            })
+            .collect();
+        let root = Style {
+            display: Display::Grid,
+            size: Size { width: length(300.0), height: auto() },
+            grid_template_columns: columns(&[50.0, 50.0, 50.0, 50.0]),
+            grid_auto_rows: vec![length(10.0)],
+            justify_content: taffy::JustifyContent::SPACE_BETWEEN,
+            ..Style::default()
+        };
+        let root = tree.add(root, [vec![subgrid], plain.clone()].concat());
+        tree.lay_out(root);
+        assert_eq!(tree.rect(plain[1]).0, 50.0 + 100.0 / 3.0);
+        for (item, plain) in in_subgrid.iter().zip(&plain) {
+            assert_eq!((tree.rect(*item).0, tree.rect(*item).2), (tree.rect(*plain).0, tree.rect(*plain).2));
+        }
+    }
+
+    /// The overlarge-grid clamp on the start side, and an auto-placed item, each alone in a subgrid over two columns
+    /// (50px and 100px): an item at lines -9 to -8 lies entirely before the span and takes its first track, and an
+    /// auto-placed item spanning three columns runs into a hypothetical implicit one and is cut at the span's last
+    /// line.
+    #[test]
+    fn items_before_or_overflowing_the_subgrids_span_are_clamped_into_it() {
+        let alone = |grid_column: Line<GridPlacement<String>>| {
+            let mut tree = Tree::default();
+            let item = tree.leaf(Style { grid_column, ..Style::default() });
+            let subgrid = Style { grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+            let subgrid = tree.add(subgrid, vec![item]);
+            let root = parent(&mut tree, subgrid, Style::default());
+            tree.lay_out(root);
+            (tree.rect(item).0, tree.rect(item).2)
+        };
+        assert_eq!(alone(columns_at(-9, -8)), (0.0, 50.0));
+        assert_eq!(alone(Line { start: span(3), end: auto() }), (0.0, 160.0));
+    }
 }
