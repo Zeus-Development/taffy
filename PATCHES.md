@@ -65,6 +65,7 @@ Branch: viper/taffy-0.15.0
 | `layout-float-alias` | every layout number (computed sizes, positions, offsets, baselines, the available space, known and intrinsic sizes, track sizes and offsets, float segments, scrollable overflow, cache entries) has the type of one alias, `LayoutFloat = f32`, exported at the crate root and in the prelude; style values stay `f32`. Mechanical; behaviour-free; prepares `layout-f64` | `adr:layout-length-cap` (prepares it; later tasks close it) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_still_f32_sums` (since `layout-f64`: `layout_sums_are_exact_beyond_f32`), and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `layout-f64` | the alias becomes `LayoutFloat = f64`: layout arithmetic (sums, positions, offsets, the available space, track sizes, cache keys) is exact for every multiple of 1/64 px up to 2^46; style values stay `f32` and widen exactly where they are resolved; a percentage and a size through an aspect ratio stay upstream's single-precision products, widened; the `grid-fr-carry` loop stays single-precision | `adr:layout-length-cap` (Viper closes it with its own clamp removal) | fork: `layout_numbers_are_the_alias`, `layout_sums_are_exact_beyond_f32`, `many_children_sum_exactly_in_layout_units`, `a_size_through_an_aspect_ratio_is_a_single_precision_product`, and the whole suite unchanged; Viper: `viper-layout::api taffy_layout_numbers_are_the_alias` | MIT (Viper's own change) | candidate; never offered without the owner |
 | `subgrid-placement` | subgrids (CSS Grid 2 section 9): `GridContainerStyle::grid_template_subgrid` (a `Style` field) says whether an axis is subgridded; a parent grid gives each subgrid item its spanned tracks' used sizes and their line names through `LayoutGridContainer::set_subgrid_tracks` around the item's final layout; in a subgridded axis the subgrid's explicit tracks are exactly those, its lines carry the parent's names beside its own, its items are clamped into the span, and it is stretched with its sizes ignored. Its items do not yet size the parent's tracks | `adr:layout-subgrid` (its placement part; V13b-2f3b closes it) | fork: `subgrid::a_subgrids_columns_are_its_parents`, `a_subgrids_edge_items_keep_clear_of_its_margin_border_and_padding`, `a_subgrids_items_are_placed_by_the_parents_and_its_own_line_names`, `an_item_beyond_the_subgrids_span_is_clamped_into_it`, `a_subgrids_rows_are_its_parents`, `a_right_to_left_subgrid_takes_its_parents_columns_in_reverse`, `a_nested_subgrid_takes_the_outer_grids_tracks`, `a_subgrid_outside_a_grid_has_implicit_tracks`, `a_right_to_left_parent_gives_a_left_to_right_subgrid_its_columns_in_reverse`, `a_right_to_left_parent_gives_a_right_to_left_subgrid_its_columns_in_order`, `a_right_to_left_subgrids_start_edge_is_its_right_edge`, `a_subgrid_is_stretched_in_its_subgridded_axis_whatever_its_aspect_ratio`, `a_subgrids_gutters_take_the_parents_distributed_space_exactly`, `items_before_or_overflowing_the_subgrids_span_are_clamped_into_it`; Viper: `viper-layout::subgrid a_subgrids_columns_and_line_names_are_its_parents` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
+| `subgrid-sizing` | a subgrid's items size its parent's tracks (CSS Grid 2 section 9): the subgrid is empty for sizing in its subgridded axes, and its items, each with extra margins (the subgrid's margin, border and padding at its edge lines and half its gap's difference from the parent's at the others, adding up through nested subgrids), take part in the parent's track sizing in its place; `GridContainerStyle::gap_normal` says whether a subgrid's gap is `normal`, the parent's; a subgrid's own gap narrows or widens the parent's gutters about their centres | `adr:layout-subgrid` (V13b-2f3b closes it) | fork: `subgrid::a_subgrids_items_size_its_parents_tracks`, `a_subgrids_edges_are_extra_margin_on_its_edge_items`, `a_subgrids_own_gap_keeps_the_parents_gutters_centred`, `half_a_subgrids_gap_difference_is_extra_margin_on_its_items`, `a_nested_subgrids_items_size_the_outer_grids_tracks`, `a_subgrids_items_size_its_parents_rows`; Viper: `viper-layout::subgrid` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -309,8 +310,8 @@ and a layout number is its own hunk with its own marker.
 
 ### `subgrid-placement`
 
-CSS Grid 2 section 9, its first part (V13b-2f3a); V13b-2f3b adds the
-subgrid's items to the parent's track sizing.
+CSS Grid 2 section 9, its first part (V13b-2f3a); `subgrid-sizing`
+(V13b-2f3b) adds the subgrid's items to the parent's track sizing.
 
 - **The style.** `GridContainerStyle::grid_template_subgrid(axis)`, `false`
   by default, forwarded by the `&T` implementation; `Style` answers from its
@@ -328,8 +329,9 @@ subgrid's items to the parent's track sizing.
   after; a host that caches layouts drops the item's cache when the value
   changes. So the take-back drops the entry of the final layout just
   computed, and each final layout of a subgrid reruns its own grid pass; its
-  children stay cached, so the cost is bounded. The item's intrinsic sizes during the parent's track sizing are
-  measured without it, as an ordinary grid, until V13b-2f3b.
+  children stay cached, so the cost is bounded. In an axis it does not
+  subgrid, the item's intrinsic sizes during the parent's track sizing are
+  measured without it, as an ordinary grid's.
 - **What the parent gives** (per subgridded axis): the used sizes of the
   spanned tracks and of the gutters between them, alternating; a gutter is the
   space between its tracks' used positions, so content distribution's space
@@ -346,20 +348,55 @@ subgrid's items to the parent's track sizing.
   overlarge grid clamps them, since the axis has no implicit tracks; its
   tracks are fixed at exactly the given sizes (`GridTrack::exact`, which track
   sizing keeps), its first track less its margin, border and padding at its
-  start and its last less those at its end, never below zero, so its lines
+  start and its last less those at its end, never below zero (and with a
+  gap of its own, `subgrid-sizing`), so its lines
   fall on the parent's and its edge items keep clear of those edges. The
   parent lays the subgrid out stretched in that axis, its `align-self` or
   `justify-self` and its sizes there ignored, and no aspect ratio transfers a
   size into it.
-- **Not yet:** the subgrid's items in the parent's track sizing, with the
-  subgrid's margin, border and padding at the edge tracks and its gap
-  differences (V13b-2f3b: until then a subgrid's own `gap` is ignored in a
-  subgridded axis and the parent's gutters are used); baseline sharing
-  across the subgrid; `repeat(auto-fill, ...)` in a `<line-name-list>` is the
+- **Not yet:** baseline sharing across the subgrid; `repeat(auto-fill, ...)` in a `<line-name-list>` is the
   caller's to expand; an orthogonal subgrid is the caller's to give
   transposed tracks; `TaffyTree` does not store subgrid tracks yet.
 - **Size.** About 250 changed code lines (the ledger's target is 100):
   the task's plan allows the fork 500.
+
+### `subgrid-sizing`
+
+CSS Grid 2 section 9, its second part (V13b-2f3b): a subgrid's items size
+its parent's tracks.
+
+- **The subgrid is empty for sizing** in its subgridded axes: the parent's
+  track sizing skips it there (`GridItem::sizes_tracks`), and sizes it as
+  any item in an axis it does not subgrid.
+- **Its items take its place.** After placement and before track sizing,
+  the parent runs each subgrid item's grid pass in a collecting mode
+  (`grid_layout`'s `collect`): the subgrid places its items in stand-in
+  tracks of the span (the parent's line names and gap, zero sizes), collects
+  its own subgrid items' items the same way, and hands them all back without
+  laying anything out. The parent moves them into its own lines (in reverse
+  when the subgrid's columns run against its own; in an axis the subgrid
+  does not subgrid, onto its area there, where they size nothing) and sizes
+  its tracks with them as with its own items, until track alignment, where
+  it drops them. Only items that size some axis are kept.
+- **Extra margins** (`GridItem::subgrid_margin`, added to the item's margins
+  wherever track sizing reads them): at the subgrid's edge lines its margin,
+  border and padding there (in its own order of the axis), at its other
+  lines half its gap's difference from the parent's; in an axis it does not
+  subgrid, all of them. Its scrollbar gutter counts with its padding. Through nested subgrids
+  they add up level by level.
+- **Gaps.** `GridContainerStyle::gap_normal`, `false` in both axes by
+  default, says whether a container's gap is `normal`; a `normal` gap in a
+  subgridded axis is the parent's (its gap value, `SubgridAxis::gap`, without
+  content distribution's space). With a gap of its own a subgrid's gutters
+  are the parent's less the difference, and its tracks beside each gutter
+  take half of it, so its gutters stay centred on the parent's. `Style` has
+  no `normal` gap yet, so a `Style` subgrid always has a gap of its own.
+- **Not yet:** a subgrid's item measured in the parent's sizing resolves its
+  percentages against the parent's content box, not the subgrid's; the
+  rest of section 9's
+  "not yet" list under `subgrid-placement`.
+- **Size.** About 280 changed code lines; the task's plan allows the fork
+  500.
 
 ## Upstream work evaluated
 
@@ -428,3 +465,4 @@ Each Viper revision that moves its pin to this branch.
 | V13b-2i1a | the last commit of the range that adds this row | `layout-float-alias` |
 | V13b-2i1b | the last commit of the range that adds this row | `layout-f64` |
 | V13b-2f3a | the last commit of the range that adds this row | `subgrid-placement` |
+| V13b-2f3b | the last commit of the range that adds this row | `subgrid-sizing` |
