@@ -135,23 +135,22 @@ pub(super) fn effective_gap<S: CheapCloneStr>(
 
 /// What a parent grid asks of a subgrid item to size its tracks with the subgrid's items (CSS Grid 2 section 9)
 // VIPER-PATCH(subgrid-sizing): the request.
-pub(super) struct Collect<'a, S: CheapCloneStr> {
+pub(super) struct Collect<S: CheapCloneStr> {
     /// Stand-in tracks for its subgridded axes: the parent's line names and gap
     pub given: InBothAbsAxis<Option<SubgridAxis<S>>>,
     /// The parent's gap in each axis, as [`effective_gap`] gives it
     pub gap: InBothAbsAxis<LayoutFloat>,
     /// The subgrid's items, in its lines and with their extra margins, for the parent to translate into its own
-    pub items: &'a mut Vec<GridItem>,
+    pub items: Vec<GridItem>,
+    /// Set when the subgrid hands over no items and sizes the parent's tracks as an ordinary item instead: a subgrid of
+    /// one axis with more than one track of its own in the other, whose items would have to be measured against those
+    /// tracks, which are not sized yet
+    pub ordinary: bool,
 }
 
-impl<'a, S: CheapCloneStr> Collect<'a, S> {
-    /// The request for `subgrid`, of the parent's gap `gap`, into `items`
-    pub(super) fn new(
-        subgrid: &SubgridItem<S>,
-        item: &GridItem,
-        gap: InBothAbsAxis<LayoutFloat>,
-        items: &'a mut Vec<GridItem>,
-    ) -> Self {
+impl<S: CheapCloneStr> Collect<S> {
+    /// The request for `subgrid`, of the parent's gap `gap`
+    pub(super) fn new(subgrid: &SubgridItem<S>, item: &GridItem, gap: InBothAbsAxis<LayoutFloat>) -> Self {
         let stand_in = |subgridded: bool, line: Line<OriginZeroLine>, names: &Vec<Vec<S>>, gap: LayoutFloat| {
             subgridded.then(|| {
                 let count = usize::try_from(line.end.0 - line.start.0).unwrap_or(0).max(1);
@@ -163,7 +162,7 @@ impl<'a, S: CheapCloneStr> Collect<'a, S> {
             horizontal: stand_in(subgrid.axes.horizontal, item.column, &subgrid.line_names.horizontal, gap.horizontal),
             vertical: stand_in(subgrid.axes.vertical, item.row, &subgrid.line_names.vertical, gap.vertical),
         };
-        Collect { given, gap, items }
+        Collect { given, gap, items: Vec::new(), ordinary: false }
     }
 }
 

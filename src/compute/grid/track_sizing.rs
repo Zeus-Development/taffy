@@ -524,7 +524,8 @@ fn resolve_baseline_group_shims(
             placement.start
         }
     };
-    let mut items: Vec<&mut GridItem> = items.iter_mut().collect();
+    // VIPER-PATCH(subgrid-sizing): only the items that size the rows share their baselines.
+    let mut items: Vec<&mut GridItem> = items.iter_mut().filter(|item| item.sizes_tracks.get(other_axis)).collect();
     items.sort_by_key(|item| group_line(item));
 
     // Iterate over grid rows

@@ -263,7 +263,7 @@ fn grid_layout<Tree: LayoutGridContainer>(
     inputs: LayoutInput,
     as_if_empty: bool,
     // VIPER-PATCH(subgrid-sizing): the request.
-    collect: Option<subgrid::Collect<'_, Tree::CustomIdent>>,
+    collect: Option<&mut subgrid::Collect<Tree::CustomIdent>>,
 ) -> LayoutOutput {
     let LayoutInput { known_dimensions, run_mode, .. } = inputs;
 
@@ -472,6 +472,17 @@ fn grid_layout<Tree: LayoutGridContainer>(
     let insets = subgrid::insets(margin + content_box_inset, direction.is_rtl());
     // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
     if let Some(collect) = collect {
+        // Not yet: the items of a subgrid of one axis are measured against its own tracks in the other only when it has
+        // one there, which spans its area; with more, it sizes the parent's tracks as an ordinary item.
+        let own_tracks = match (&given.horizontal, &given.vertical) {
+            (None, Some(_)) => final_col_counts.len(),
+            (Some(_), None) => final_row_counts.len(),
+            _ => 0,
+        };
+        if own_tracks > 1 {
+            collect.ordinary = true;
+            return LayoutOutput::HIDDEN;
+        }
         drop(grid_template_rows);
         drop(grid_template_columns);
         drop(grid_auto_rows);
@@ -1150,9 +1161,13 @@ fn collect_subgrid_items<Tree: LayoutGridContainer>(
     for subgrid in subgrids {
         let item = &mut items[subgrid.index];
         item.sizes_tracks = Size { width: !subgrid.axes.horizontal, height: !subgrid.axes.vertical };
-        let mut inner = Vec::new();
-        grid_layout(tree, item.node, inputs, false, Some(subgrid::Collect::new(subgrid, item, gap, &mut inner)));
-        collected.extend(subgrid::translate(subgrid, item, inner));
+        let mut collect = subgrid::Collect::new(subgrid, item, gap);
+        grid_layout(tree, item.node, inputs, false, Some(&mut collect));
+        if collect.ordinary {
+            item.sizes_tracks = Size { width: true, height: true };
+            continue;
+        }
+        collected.extend(subgrid::translate(subgrid, item, collect.items));
     }
     collected
 }
