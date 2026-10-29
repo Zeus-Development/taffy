@@ -451,6 +451,8 @@ fn build_style<S: CheapCloneStr>(xnode: roxmltree::Node) -> taffy::Style<S> {
         grid_template_column_names: grid_template_columns.line_names,
         // VIPER-PATCH(subgrid-placement): the field (the fixtures have no subgrid).
         grid_template_subgrid: taffy::Point { x: false, y: false },
+        // VIPER-PATCH(subgrid-sizing): the field (the fixtures have no `normal` gap).
+        gap_normal: taffy::Size { width: false, height: false },
 
         // TODO
         grid_auto_rows: parse_or_default::<GridAutoTracks>(xnode.attribute("grid-auto-rows")).0,

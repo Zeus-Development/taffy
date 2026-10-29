@@ -949,6 +949,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
     #[cfg(feature = "grid")]
     pub grid_template_subgrid: Point<bool>,
+    /// Whether the column gap (`width`) and the row gap (`height`) are `normal`, which [`Self::gap`] cannot say: see
+    /// [`GridContainerStyle::gap_normal`].
+    // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+    #[cfg(feature = "grid")]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub gap_normal: Size<bool>,
 
     // Grid child properties
     /// Defines which row in the grid the item should start and end at
@@ -1030,6 +1036,9 @@ impl<S: CheapCloneStr> Style<S> {
         // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
         #[cfg(feature = "grid")]
         grid_template_subgrid: Point { x: false, y: false },
+        // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+        #[cfg(feature = "grid")]
+        gap_normal: Size { width: false, height: false },
         #[cfg(feature = "grid")]
         grid_auto_rows: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -1603,6 +1612,11 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
             crate::geometry::AbsoluteAxis::Vertical => self.grid_template_subgrid.y,
         }
     }
+    // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+    #[inline(always)]
+    fn gap_normal(&self) -> Size<bool> {
+        self.gap_normal
+    }
 }
 
 #[cfg(feature = "grid")]
@@ -1678,6 +1692,11 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn grid_template_subgrid(&self, axis: crate::geometry::AbsoluteAxis) -> bool {
         (*self).grid_template_subgrid(axis)
+    }
+    // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+    #[inline(always)]
+    fn gap_normal(&self) -> Size<bool> {
+        (*self).gap_normal()
     }
     #[inline(always)]
     fn grid_auto_flow(&self) -> GridAutoFlow {
@@ -1822,6 +1841,9 @@ mod tests {
             // VIPER-PATCH(subgrid-placement): whether an axis is subgridded.
             #[cfg(feature = "grid")]
             grid_template_subgrid: Point { x: false, y: false },
+            // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+            #[cfg(feature = "grid")]
+            gap_normal: Size { width: false, height: false },
             #[cfg(feature = "grid")]
             grid_template_areas: Default::default(),
             #[cfg(feature = "grid")]

@@ -1368,6 +1368,26 @@ mod subgrid {
         assert_eq!(tree.rect(items[1]), (70.0, 0.0, 70.0, 10.0));
     }
 
+    /// Section 9: a subgrid's `normal` gap is its parent's, whatever `gap` holds: the gutters stay the parent's 10px
+    /// and its items, 40px and 70px wide, get no extra margin.
+    #[test]
+    fn a_subgrids_normal_gap_is_its_parents() {
+        let mut tree = Tree::default();
+        let items = vec![wide(&mut tree, 40.0), wide(&mut tree, 70.0)];
+        let subgrid = Style {
+            grid_column: columns_at(1, 3),
+            gap: Size { width: length(30.0), height: zero() },
+            gap_normal: Size { width: true, height: false },
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = auto_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 120.0);
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 40.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (50.0, 0.0, 70.0, 10.0));
+    }
+
     /// Section 9: the extra margins add up through nested subgrids: an item 60px wide in a subgrid with a 4px left
     /// padding, nested in the second column of a subgrid with a 2px right padding, makes that column 66px.
     #[test]
