@@ -1521,4 +1521,31 @@ mod subgrid {
         assert_eq!(tree.rect(root).3, 100.0);
         assert_eq!(tree.rect(square), (100.0, 0.0, 100.0, 100.0));
     }
+
+    /// A subgrid of its rows with one own column measures its items in that column when the column does not fill its
+    /// area, and across the area when it is flexible
+    #[test]
+    fn a_row_subgrids_item_is_measured_in_its_one_own_column() {
+        for (column, size) in [(length(50.0), 50.0), (fr(1.0), 200.0)] {
+            let mut tree = Tree::default();
+            let square = tree.leaf(Style { aspect_ratio: Some(1.0), ..Style::default() });
+            let subgrid = Style {
+                display: Display::Grid,
+                grid_template_subgrid: Point { x: false, y: true },
+                grid_template_columns: vec![column],
+                ..Style::default()
+            };
+            let subgrid = tree.add(subgrid, vec![square]);
+            let root = Style {
+                display: Display::Grid,
+                grid_template_columns: columns(&[200.0]),
+                grid_template_rows: vec![auto()],
+                ..Style::default()
+            };
+            let root = tree.add(root, vec![subgrid]);
+            tree.lay_out(root);
+            assert_eq!(tree.rect(root).3, size);
+            assert_eq!(tree.rect(square), (0.0, 0.0, size, size));
+        }
+    }
 }

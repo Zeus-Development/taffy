@@ -470,35 +470,6 @@ fn grid_layout<Tree: LayoutGridContainer>(
     };
     let margin = style.margin().resolve_or_zero(inputs.parent_size.width, |val, basis| tree.calc(val, basis));
     let insets = subgrid::insets(margin + content_box_inset, direction.is_rtl());
-    // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
-    if let Some(collect) = collect {
-        // Not yet: the items of a subgrid of one axis are measured against its own tracks in the other only when it has
-        // one there, which spans its area; with more, it sizes the parent's tracks as an ordinary item.
-        let own_tracks = match (&given.horizontal, &given.vertical) {
-            (None, Some(_)) => final_col_counts.len(),
-            (Some(_), None) => final_row_counts.len(),
-            _ => 0,
-        };
-        if own_tracks > 1 {
-            collect.ordinary = true;
-            return LayoutOutput::HIDDEN;
-        }
-        drop(grid_template_rows);
-        drop(grid_template_columns);
-        drop(grid_auto_rows);
-        drop(grid_auto_columns);
-        drop(style);
-        let mut nested = collect_subgrid_items(tree, &mut items, &subgrids, own_gap, inner_node_size);
-        items.append(&mut nested);
-        let half = InBothAbsAxis {
-            horizontal: (own_gap.horizontal - collect.gap.horizontal) / 2.0,
-            vertical: (own_gap.vertical - collect.gap.vertical) / 2.0,
-        };
-        subgrid::add_margins(&mut items, &given, insets, half, direction.is_rtl());
-        collect.items.append(&mut items);
-        return LayoutOutput::HIDDEN;
-    }
-
     // 5. Initialize Tracks
     // Initialize (explicit and implicit) grid tracks (and gutters)
     // This resolves the min and max track sizing functions for all tracks and gutters
@@ -527,6 +498,44 @@ fn grid_layout<Tree: LayoutGridContainer>(
     }
     if let Some(axis) = &given.vertical {
         subgrid::parent_tracks(&mut rows, axis, insets.vertical, (!gap_normal.height).then_some(gap.height));
+    }
+
+    // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
+    if let Some(collect) = collect {
+        // Not yet: the items of a subgrid of one axis are measured across its area in the other, which is right only
+        // when it has at most one own track there that fills the area; otherwise it sizes the parent's tracks as an
+        // ordinary item.
+        let (own, content): (&[GridTrack], AlignContent) = match (&given.horizontal, &given.vertical) {
+            (None, Some(_)) => (&columns[..], justify_content),
+            (Some(_), None) => (&rows[..], align_content),
+            _ => (&[], AlignContent::STRETCH),
+        };
+        let mut own = own.iter().filter(|track| track.kind == GridTrackKind::Track);
+        let fills = match (own.next(), own.next()) {
+            (None, _) => true,
+            (Some(track), None) => {
+                track.is_flexible() || (track.max_track_sizing_function.is_auto() && content == AlignContent::STRETCH)
+            }
+            _ => false,
+        };
+        if !fills {
+            collect.ordinary = true;
+            return LayoutOutput::HIDDEN;
+        }
+        drop(grid_template_rows);
+        drop(grid_template_columns);
+        drop(grid_auto_rows);
+        drop(grid_auto_columns);
+        drop(style);
+        let mut nested = collect_subgrid_items(tree, &mut items, &subgrids, own_gap, inner_node_size);
+        items.append(&mut nested);
+        let half = InBothAbsAxis {
+            horizontal: (own_gap.horizontal - collect.gap.horizontal) / 2.0,
+            vertical: (own_gap.vertical - collect.gap.vertical) / 2.0,
+        };
+        subgrid::add_margins(&mut items, &given, insets, half, direction.is_rtl());
+        collect.items.append(&mut items);
+        return LayoutOutput::HIDDEN;
     }
 
     drop(grid_template_rows);
