@@ -1495,9 +1495,8 @@ mod subgrid {
     }
 
     /// Section 12.1: an item's height is measured against its own column, which in a subgrid of its rows is the
-    /// subgrid's own. A subgrid of its rows with own columns `100px 100px` sizes the parent's row as an ordinary item
-    /// until its items are measured in those columns: an `aspect-ratio: 1` item in its second column makes the
-    /// parent's auto row 100px, not the 200px of the subgrid's whole width.
+    /// subgrid's own: in a subgrid of its rows with own columns `100px 100px`, an `aspect-ratio: 1` item in its second
+    /// column makes the parent's auto row 100px, not the 200px of the subgrid's whole width.
     #[test]
     fn a_row_subgrids_item_is_measured_in_its_own_column() {
         let mut tree = Tree::default();
@@ -1522,8 +1521,8 @@ mod subgrid {
         assert_eq!(tree.rect(square), (100.0, 0.0, 100.0, 100.0));
     }
 
-    /// A subgrid of its rows with one own column measures its items in that column when the column does not fill its
-    /// area, and across the area when it is flexible
+    /// Section 12.1: a subgrid of its rows with one own column measures its items in that column, which is the area
+    /// when it is flexible
     #[test]
     fn a_row_subgrids_item_is_measured_in_its_one_own_column() {
         for (column, size) in [(length(50.0), 50.0), (fr(1.0), 200.0)] {
@@ -1549,8 +1548,8 @@ mod subgrid {
         }
     }
 
-    /// A subgrid of its rows narrower than its area, by its width or its maximum width, measures its items in its
-    /// own box, not across the area; one with neither fills the area
+    /// Section 12.1: a subgrid of its rows narrower than its area, by its width or its maximum width, sizes its own
+    /// column in its own box and measures its items there, not across the area; one with neither fills the area
     #[test]
     fn a_row_subgrids_item_is_measured_in_its_own_box() {
         let cases: [(Dimension, LengthPercentageAuto, LayoutFloat); 3] =
@@ -1577,5 +1576,73 @@ mod subgrid {
             assert_eq!(tree.rect(root).3, size);
             assert_eq!(tree.rect(square), (0.0, 0.0, size, size));
         }
+    }
+
+    /// Section 12.1: the items of a subgrid of its rows size the parent's rows each in its own column: over two auto
+    /// rows, an `aspect-ratio: 1` item in the second of own columns `100px 100px` makes the first row 100px and a
+    /// 30px-high item in the first column the second row 30px, rather than the subgrid's 130px spread over both.
+    #[test]
+    fn a_row_subgrids_items_size_the_parents_rows_in_their_own_columns() {
+        let mut tree = Tree::default();
+        let square = Style { grid_row: columns_at(1, 2), grid_column: columns_at(2, 3), ..Style::default() };
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), ..square });
+        let size = Size { width: auto(), height: length(30.0) };
+        let low =
+            tree.leaf(Style { grid_row: columns_at(2, 3), grid_column: columns_at(1, 2), size, ..Style::default() });
+        let subgrid = Style {
+            display: Display::Grid,
+            grid_row: columns_at(1, 3),
+            grid_template_subgrid: Point { x: false, y: true },
+            grid_template_columns: columns(&[100.0, 100.0]),
+            ..Style::default()
+        };
+        let subgrid = tree.add(subgrid, vec![square, low]);
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: columns(&[200.0]),
+            grid_template_rows: vec![auto(), auto()],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).3, 130.0);
+        assert_eq!(tree.rect(square), (100.0, 0.0, 100.0, 100.0));
+        assert_eq!(tree.rect(low), (0.0, 100.0, 100.0, 30.0));
+    }
+
+    /// Section 12.1, step 3: the items of a subgrid of its columns size the parent's columns again once each is
+    /// measured in its own row: over two auto columns, `aspect-ratio: 1` items in own rows `50px 100px` make the
+    /// columns 100px (the item in the second row) and 50px (the one in the first), rather than 75px each.
+    #[test]
+    fn a_column_subgrids_items_size_the_parents_columns_in_their_own_rows() {
+        let mut tree = Tree::default();
+        let square = |tree: &mut Tree, row: i16, column: i16| {
+            let placed = Style {
+                grid_row: columns_at(row, row + 1),
+                grid_column: columns_at(column, column + 1),
+                ..Style::default()
+            };
+            tree.leaf(Style { aspect_ratio: Some(1.0), ..placed })
+        };
+        let items = vec![square(&mut tree, 2, 1), square(&mut tree, 1, 2)];
+        let subgrid = Style {
+            display: Display::Grid,
+            grid_column: columns_at(1, 3),
+            grid_template_subgrid: Point { x: true, y: false },
+            grid_template_rows: columns(&[50.0, 100.0]),
+            ..Style::default()
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: vec![auto(), auto()],
+            grid_template_rows: vec![auto()],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 150.0);
+        assert_eq!(tree.rect(items[0]), (0.0, 50.0, 100.0, 100.0));
+        assert_eq!(tree.rect(items[1]), (100.0, 0.0, 50.0, 50.0));
     }
 }

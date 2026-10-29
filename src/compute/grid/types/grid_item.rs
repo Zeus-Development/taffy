@@ -4,8 +4,7 @@ use super::GridTrack;
 use crate::compute::common::containment::last_baseline_at_margin_edge;
 use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::compute::grid::OriginZeroLine;
-// VIPER-PATCH(subgrid-sizing): the absolute axis.
-use crate::geometry::{AbsoluteAxis, AbstractAxis};
+use crate::geometry::AbstractAxis;
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{AlignItems, AlignSelf, AvailableSpace, Dimension, LengthPercentageAuto, Overflow};
 // VIPER-PATCH(last-baseline): `Baselines` for the final baselines.
@@ -144,6 +143,10 @@ pub(in super::super) struct GridItem {
     /// padding at the item's edges at the subgrid's, and half the difference of its gaps at the others
     // VIPER-PATCH(subgrid-sizing): the field.
     pub subgrid_margin: Rect<LayoutFloat>,
+    /// The size of the item's area in each axis, when it is not its tracks': an item of a subgrid of one axis is
+    /// measured in its own tracks of the other (CSS Grid 2 section 12.1), whatever its tracks there in this grid
+    // VIPER-PATCH(subgrid-own-tracks): the field.
+    pub own_area: Size<Option<LayoutFloat>>,
 }
 
 impl GridItem {
@@ -199,6 +202,8 @@ impl GridItem {
             // VIPER-PATCH(subgrid-sizing): a plain item's.
             sizes_tracks: Size { width: true, height: true },
             subgrid_margin: Rect::ZERO,
+            // VIPER-PATCH(subgrid-own-tracks): a plain item's.
+            own_area: Size::NONE,
         }
     }
 
@@ -392,39 +397,11 @@ impl GridItem {
         }
     }
 
-    /// Whether the item's box is its grid area less its margins in the axis: it has no size, minimum, maximum or
-    /// aspect ratio of its own, it is stretched, and neither margin there is `auto`
-    // VIPER-PATCH(subgrid-sizing): the method.
-    pub fn fills_area(&self, axis: AbsoluteAxis) -> bool {
-        let (size, min, max, alignment, margin) = match axis {
-            AbsoluteAxis::Horizontal => (
-                self.size.width,
-                self.min_size.width,
-                self.max_size.width,
-                self.justify_self,
-                Line { start: self.margin.left, end: self.margin.right },
-            ),
-            AbsoluteAxis::Vertical => (
-                self.size.height,
-                self.min_size.height,
-                self.max_size.height,
-                self.align_self,
-                Line { start: self.margin.top, end: self.margin.bottom },
-            ),
-        };
-        size.is_auto()
-            && min.is_auto()
-            && max.is_auto()
-            && self.aspect_ratio.is_none()
-            && self.is_stretch_aligned(alignment)
-            && !margin.start.is_auto()
-            && !margin.end.is_auto()
-    }
-
     /// Compute the known_dimensions to be passed to the child sizing functions
     /// The key thing that is being done here is applying stretch alignment, which is necessary to
     /// allow percentage sizes further down the tree to resolve properly in some cases
-    fn known_dimensions(
+    // VIPER-PATCH(subgrid-own-tracks): for a subgrid item's box too.
+    pub(in super::super) fn known_dimensions(
         &self,
         tree: &mut impl LayoutPartialTree,
         // VIPER-PATCH(layout-float-alias): the alias.
@@ -593,7 +570,8 @@ impl GridItem {
                 .sum::<Option<LayoutFloat>>(),
         );
 
-        size
+        // VIPER-PATCH(subgrid-own-tracks): or its own.
+        Size { width: self.own_area.width.or(size.width), height: self.own_area.height.or(size.height) }
     }
 
     /// Retrieve the available_space from the cache or compute them using the passed parameters

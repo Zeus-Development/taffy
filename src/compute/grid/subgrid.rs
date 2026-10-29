@@ -3,12 +3,21 @@
 // VIPER-PATCH(subgrid-placement): the module.
 // VIPER-PATCH(subgrid-sizing): its items in the parent's track sizing.
 //! The subgrid's items size the parent's tracks of those axes in its place, with extra margins.
+// VIPER-PATCH(subgrid-own-tracks): its own tracks.
+//! A subgrid of one axis sizes its own tracks of the other in its box once the parent has sized its tracks there, and
+//! its items are measured in them.
 
 use super::types::{GridItem, GridTrack, GridTrackKind, NamedLineResolver, TrackCounts};
 use super::OriginZeroLine;
-use crate::geometry::{AbsoluteAxis, InBothAbsAxis, Line, Rect};
+// VIPER-PATCH(subgrid-own-tracks): the abstract axis.
+use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis, Line, Rect};
+// VIPER-PATCH(subgrid-own-tracks): auto tracks.
+use crate::style::{MaxTrackSizingFunction, MinTrackSizingFunction};
+use crate::style_helpers::TaffyAuto;
 use crate::sys::{DefaultCheapStr, Vec};
 use crate::{CheapCloneStr, LayoutFloat};
+// VIPER-PATCH(subgrid-own-tracks): the collected items' range.
+use core::ops::Range;
 
 /// The parent's tracks and line names for one subgridded axis, in the subgrid's own order of that axis
 #[derive(Debug, Clone, PartialEq)]
@@ -142,10 +151,13 @@ pub(super) struct Collect<S: CheapCloneStr> {
     pub gap: InBothAbsAxis<LayoutFloat>,
     /// The subgrid's items, in its lines and with their extra margins, for the parent to translate into its own
     pub items: Vec<GridItem>,
-    /// Set when the subgrid hands over no items and sizes the parent's tracks as an ordinary item instead: a subgrid of
-    /// one axis with more than one track of its own in the other, whose items would have to be measured against those
-    /// tracks, which are not sized yet
-    pub ordinary: bool,
+    /// The axis a subgrid of one axis does not subgrid, when the parent has sized its tracks there: the subgrid sizes
+    /// its own tracks of it, in its box, and gives its items their areas there
+    // VIPER-PATCH(subgrid-own-tracks): the field.
+    pub own: Option<AbstractAxis>,
+    /// Whether `given` holds the parent's sized tracks rather than stand-ins
+    // VIPER-PATCH(subgrid-own-tracks): the field.
+    pub sized: bool,
 }
 
 impl<S: CheapCloneStr> Collect<S> {
@@ -162,7 +174,42 @@ impl<S: CheapCloneStr> Collect<S> {
             horizontal: stand_in(subgrid.axes.horizontal, item.column, &subgrid.line_names.horizontal, gap.horizontal),
             vertical: stand_in(subgrid.axes.vertical, item.row, &subgrid.line_names.vertical, gap.vertical),
         };
-        Collect { given, gap, items: Vec::new(), ordinary: false }
+        // VIPER-PATCH(subgrid-own-tracks): no own tracks to size.
+        Collect { given, gap, items: Vec::new(), own: None, sized: false }
+    }
+
+    /// The parent's sized tracks in place of the stand-ins, for `subgrid`, its item `item`
+    // VIPER-PATCH(subgrid-own-tracks): the method.
+    pub(super) fn sized(
+        &mut self,
+        subgrid: &SubgridItem<S>,
+        item: &GridItem,
+        columns: &[GridTrack],
+        rows: &[GridTrack],
+    ) {
+        let sizes = |tracks: &[GridTrack], line: Line<u16>| -> Vec<LayoutFloat> {
+            let span = &tracks[usize::from(line.start) + 1..usize::from(line.end)];
+            span.iter().map(|track| track.exact_size.unwrap_or(track.base_size)).collect()
+        };
+        if let Some(axis) = &mut self.given.horizontal {
+            axis.sizes = sizes(columns, item.column_indexes);
+            if subgrid.reversed {
+                axis.sizes.reverse();
+            }
+        }
+        if let Some(axis) = &mut self.given.vertical {
+            axis.sizes = sizes(rows, item.row_indexes);
+        }
+        self.sized = true;
+    }
+}
+
+/// Make the tracks, not the gutters, `auto`: a subgridded axis's stand-ins while the parent has not sized it, so that
+/// the items are measured in an indefinite area there
+// VIPER-PATCH(subgrid-own-tracks): the function.
+pub(super) fn auto_tracks(tracks: &mut [GridTrack]) {
+    for track in tracks.iter_mut().filter(|track| track.kind == GridTrackKind::Track) {
+        *track = GridTrack::new(MinTrackSizingFunction::AUTO, MaxTrackSizingFunction::AUTO);
     }
 }
 
@@ -170,6 +217,7 @@ impl<S: CheapCloneStr> Collect<S> {
 /// own order of each axis, `rtl` that of its columns, `half` half the difference of its gaps from the parent's in each
 /// axis): at the subgrid's edge lines in a subgridded axis its insets there, at the others `half`, and all its insets
 /// in an axis it does not subgrid
+// VIPER-PATCH(subgrid-own-tracks): none in an axis where an item has an area of its own, which is inside them.
 // VIPER-PATCH(subgrid-sizing): the extra margins.
 pub(super) fn add_margins<S: CheapCloneStr>(
     items: &mut [GridItem],
@@ -188,8 +236,15 @@ pub(super) fn add_margins<S: CheapCloneStr>(
             }
         };
     for item in items {
-        let columns = extra(item.column, &given.horizontal, insets.horizontal, half.horizontal);
-        let rows = extra(item.row, &given.vertical, insets.vertical, half.vertical);
+        let mut columns = extra(item.column, &given.horizontal, insets.horizontal, half.horizontal);
+        let mut rows = extra(item.row, &given.vertical, insets.vertical, half.vertical);
+        // VIPER-PATCH(subgrid-own-tracks): none there.
+        if item.own_area.width.is_some() {
+            columns = Line { start: 0.0, end: 0.0 };
+        }
+        if item.own_area.height.is_some() {
+            rows = Line { start: 0.0, end: 0.0 };
+        }
         let (left, right) = if rtl { (columns.end, columns.start) } else { (columns.start, columns.end) };
         item.subgrid_margin = item.subgrid_margin + Rect { left, right, top: rows.start, bottom: rows.end };
     }
@@ -262,6 +317,9 @@ pub(super) struct SubgridItem<S: CheapCloneStr> {
     pub reversed: bool,
     /// The parent's names of the lines it spans, per subgridded axis
     pub line_names: InBothAbsAxis<Vec<Vec<S>>>,
+    /// Where its items are among the parent's, once collected
+    // VIPER-PATCH(subgrid-own-tracks): the field.
+    pub collected: Range<usize>,
 }
 
 impl<S: CheapCloneStr> SubgridItem<S> {
@@ -287,7 +345,8 @@ impl<S: CheapCloneStr> SubgridItem<S> {
         if reversed {
             line_names.horizontal.reverse();
         }
-        SubgridItem { index, axes, reversed, line_names }
+        // VIPER-PATCH(subgrid-own-tracks): none collected yet.
+        SubgridItem { index, axes, reversed, line_names, collected: 0..0 }
     }
 
     /// The tracks the parent gives the item, from its final tracks; `rtl` when the parent's are right to left
