@@ -503,8 +503,9 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
     if let Some(collect) = collect {
         // Not yet: the items of a subgrid of one axis are measured across its area in the other, which is right only
-        // when it has at most one own track there that fills the area; otherwise it sizes the parent's tracks as an
-        // ordinary item.
+        // when the subgrid itself is stretched there with no size of its own (collect_subgrid_items checks that) and it
+        // has at most one own track there that fills the area; otherwise it sizes the parent's tracks as an ordinary
+        // item.
         let (own, content): (&[GridTrack], AlignContent) = match (&given.horizontal, &given.vertical) {
             (None, Some(_)) => (&columns[..], justify_content),
             (Some(_), None) => (&rows[..], align_content),
@@ -1169,6 +1170,13 @@ fn collect_subgrid_items<Tree: LayoutGridContainer>(
     let mut collected = Vec::new();
     for subgrid in subgrids {
         let item = &mut items[subgrid.index];
+        // Not yet: a subgrid of one axis hands over its items only when it is its area less its margins in the other,
+        // where they are measured across it; otherwise it sizes the parent's tracks as an ordinary item.
+        let fills = (subgrid.axes.horizontal || item.fills_area(AbsoluteAxis::Horizontal))
+            && (subgrid.axes.vertical || item.fills_area(AbsoluteAxis::Vertical));
+        if !fills {
+            continue;
+        }
         item.sizes_tracks = Size { width: !subgrid.axes.horizontal, height: !subgrid.axes.vertical };
         let mut collect = subgrid::Collect::new(subgrid, item, gap);
         grid_layout(tree, item.node, inputs, false, Some(&mut collect));

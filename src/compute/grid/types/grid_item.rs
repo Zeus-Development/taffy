@@ -4,7 +4,8 @@ use super::GridTrack;
 use crate::compute::common::containment::last_baseline_at_margin_edge;
 use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
 use crate::compute::grid::OriginZeroLine;
-use crate::geometry::AbstractAxis;
+// VIPER-PATCH(subgrid-sizing): the absolute axis.
+use crate::geometry::{AbsoluteAxis, AbstractAxis};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{AlignItems, AlignSelf, AvailableSpace, Dimension, LengthPercentageAuto, Overflow};
 // VIPER-PATCH(last-baseline): `Baselines` for the final baselines.
@@ -389,6 +390,35 @@ impl GridItem {
             AlignItemsKeyword::Normal => !self.is_replaced,
             _ => false,
         }
+    }
+
+    /// Whether the item's box is its grid area less its margins in the axis: it has no size, minimum, maximum or
+    /// aspect ratio of its own, it is stretched, and neither margin there is `auto`
+    // VIPER-PATCH(subgrid-sizing): the method.
+    pub fn fills_area(&self, axis: AbsoluteAxis) -> bool {
+        let (size, min, max, alignment, margin) = match axis {
+            AbsoluteAxis::Horizontal => (
+                self.size.width,
+                self.min_size.width,
+                self.max_size.width,
+                self.justify_self,
+                Line { start: self.margin.left, end: self.margin.right },
+            ),
+            AbsoluteAxis::Vertical => (
+                self.size.height,
+                self.min_size.height,
+                self.max_size.height,
+                self.align_self,
+                Line { start: self.margin.top, end: self.margin.bottom },
+            ),
+        };
+        size.is_auto()
+            && min.is_auto()
+            && max.is_auto()
+            && self.aspect_ratio.is_none()
+            && self.is_stretch_aligned(alignment)
+            && !margin.start.is_auto()
+            && !margin.end.is_auto()
     }
 
     /// Compute the known_dimensions to be passed to the child sizing functions

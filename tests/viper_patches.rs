@@ -1548,4 +1548,34 @@ mod subgrid {
             assert_eq!(tree.rect(square), (0.0, 0.0, size, size));
         }
     }
+
+    /// A subgrid of its rows narrower than its area, by its width or its maximum width, measures its items in its
+    /// own box, not across the area; one with neither fills the area
+    #[test]
+    fn a_row_subgrids_item_is_measured_in_its_own_box() {
+        let cases: [(Dimension, LengthPercentageAuto, LayoutFloat); 3] =
+            [(length(50.0), auto(), 50.0), (auto(), length(50.0), 50.0), (auto(), auto(), 200.0)];
+        for (width, max_width, size) in cases {
+            let mut tree = Tree::default();
+            let square = tree.leaf(Style { aspect_ratio: Some(1.0), ..Style::default() });
+            let subgrid = Style {
+                display: Display::Grid,
+                grid_template_subgrid: Point { x: false, y: true },
+                size: Size { width, height: auto() },
+                max_size: Size { width: max_width, height: auto() },
+                ..Style::default()
+            };
+            let subgrid = tree.add(subgrid, vec![square]);
+            let root = Style {
+                display: Display::Grid,
+                grid_template_columns: columns(&[200.0]),
+                grid_template_rows: vec![auto()],
+                ..Style::default()
+            };
+            let root = tree.add(root, vec![subgrid]);
+            tree.lay_out(root);
+            assert_eq!(tree.rect(root).3, size);
+            assert_eq!(tree.rect(square), (0.0, 0.0, size, size));
+        }
+    }
 }
