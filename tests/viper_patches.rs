@@ -1645,4 +1645,170 @@ mod subgrid {
         assert_eq!(tree.rect(items[0]), (0.0, 50.0, 100.0, 100.0));
         assert_eq!(tree.rect(items[1]), (100.0, 0.0, 50.0, 50.0));
     }
+
+    /// A subgrid of its columns, with no gap, in a grid of one auto column and one row `row` px high
+    fn column_subgrid_in(tree: &mut Tree, subgrid: Style<String>, items: Vec<usize>, row: f32) -> (usize, usize) {
+        let subgrid = Style { grid_column: columns_at(1, 2), gap: zero(), ..subgrid_columns(subgrid) };
+        let subgrid = tree.add(subgrid, items);
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: vec![auto()],
+            grid_template_rows: columns(&[row]),
+            ..Style::default()
+        };
+        (tree.add(root, vec![subgrid]), subgrid)
+    }
+
+    /// Section 12.1, step 1: a subgrid of its columns in a 100px row measures its items in its own rows, not in the
+    /// row: an `aspect-ratio: 1` item in the second of own rows `50px 50px`, or `50% 50%`, makes the auto column 50px.
+    #[test]
+    fn a_column_subgrids_items_size_the_parents_columns_in_their_own_rows_of_a_fixed_row() {
+        for rows in [columns(&[50.0, 50.0]), vec![percent(0.5), percent(0.5)]] {
+            let mut tree = Tree::default();
+            let square = tree.leaf(Style { aspect_ratio: Some(1.0), grid_row: columns_at(2, 3), ..Style::default() });
+            let subgrid = Style { grid_template_rows: rows, ..Style::default() };
+            let (root, _) = column_subgrid_in(&mut tree, subgrid, vec![square], 100.0);
+            tree.lay_out(root);
+            assert_eq!(tree.rect(root).2, 50.0);
+            assert_eq!(tree.rect(square), (0.0, 50.0, 50.0, 50.0));
+        }
+    }
+
+    /// Section 12.1, step 1: a subgrid of its columns aligned to the start of a 100px row is as high as its content,
+    /// so an `aspect-ratio: 1` item with `min-height: 30px` is measured in a 30px own row and makes the column 30px.
+    #[test]
+    fn a_column_subgrid_aligned_to_the_start_of_its_row_measures_its_items_in_its_own_height() {
+        let mut tree = Tree::default();
+        let min_size = Size { width: auto(), height: length(30.0) };
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), min_size, ..Style::default() });
+        let subgrid = Style { align_self: Some(AlignSelf::START), ..Style::default() };
+        let (root, subgrid) = column_subgrid_in(&mut tree, subgrid, vec![square], 100.0);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root), (0.0, 0.0, 30.0, 100.0));
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 30.0, 30.0));
+        assert_eq!(tree.rect(square), (0.0, 0.0, 30.0, 30.0));
+    }
+
+    /// Section 12.1: the items of a right-to-left subgrid of its columns size the parent's columns in their own rows,
+    /// the subgrid's first column being the parent's second: `aspect-ratio: 1` items in own rows `50px 100px` make
+    /// the parent's first column 50px (the item in the subgrid's second column, first row) and its second 100px.
+    #[test]
+    fn a_right_to_left_column_subgrids_items_size_the_parents_columns_in_their_own_rows() {
+        let mut tree = Tree::default();
+        let square = |tree: &mut Tree, row: i16, column: i16| {
+            let placed = Style {
+                grid_row: columns_at(row, row + 1),
+                grid_column: columns_at(column, column + 1),
+                ..Style::default()
+            };
+            tree.leaf(Style { aspect_ratio: Some(1.0), ..placed })
+        };
+        let items = vec![square(&mut tree, 2, 1), square(&mut tree, 1, 2)];
+        let subgrid = Style {
+            direction: Direction::Rtl,
+            grid_column: columns_at(1, 3),
+            gap: zero(),
+            grid_template_rows: columns(&[50.0, 100.0]),
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: vec![auto(), auto()],
+            grid_template_rows: vec![auto()],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 150.0);
+        assert_eq!(tree.rect(items[0]), (50.0, 50.0, 100.0, 100.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 0.0, 50.0, 50.0));
+    }
+
+    /// Section 9: a subgrid's size constraints do not apply in its subgridded axis, and its aspect ratio sizes nothing
+    /// in the other, where it fills its 200px column: its `aspect-ratio: 1` item makes the auto row 200px.
+    #[test]
+    fn a_row_subgrids_aspect_ratio_does_not_narrow_its_items() {
+        let mut tree = Tree::default();
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), ..Style::default() });
+        let subgrid = Style {
+            display: Display::Grid,
+            grid_template_subgrid: Point { x: false, y: true },
+            aspect_ratio: Some(4.0),
+            ..Style::default()
+        };
+        let subgrid = tree.add(subgrid, vec![square]);
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: columns(&[200.0]),
+            grid_template_rows: vec![auto()],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).3, 200.0);
+        assert_eq!(tree.rect(square), (0.0, 0.0, 200.0, 200.0));
+    }
+
+    /// A subgrid of its rows, inside a subgrid of both axes, in a grid of one 200px column and an auto row
+    fn row_subgrid_in_both(tree: &mut Tree, inner: Style<String>, items: Vec<usize>) -> usize {
+        let inner = Style { display: Display::Grid, grid_template_subgrid: Point { x: false, y: true }, ..inner };
+        let inner = tree.add(inner, items);
+        let outer =
+            Style { display: Display::Grid, grid_template_subgrid: Point { x: true, y: true }, ..Style::default() };
+        let outer = tree.add(outer, vec![inner]);
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: columns(&[200.0]),
+            grid_template_rows: vec![auto()],
+            ..Style::default()
+        };
+        tree.add(root, vec![outer])
+    }
+
+    /// Section 12.1: a subgrid of its rows inside a subgrid of both axes measures its items in its own column, `100px`
+    /// of `100px 100px`, or in its own 50px width: its `aspect-ratio: 1` item makes the row 100px, or 50px.
+    #[test]
+    fn a_row_subgrid_inside_a_subgrid_of_both_axes_measures_its_items_in_its_own_columns() {
+        let mut tree = Tree::default();
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), grid_column: columns_at(2, 3), ..Style::default() });
+        let inner = Style { grid_template_columns: columns(&[100.0, 100.0]), ..Style::default() };
+        let root = row_subgrid_in_both(&mut tree, inner, vec![square]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).3, 100.0);
+        assert_eq!(tree.rect(square), (100.0, 0.0, 100.0, 100.0));
+
+        let mut tree = Tree::default();
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), ..Style::default() });
+        let inner = Style { size: Size { width: length(50.0), height: auto() }, ..Style::default() };
+        let root = row_subgrid_in_both(&mut tree, inner, vec![square]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).3, 50.0);
+        assert_eq!(tree.rect(square), (0.0, 0.0, 50.0, 50.0));
+    }
+
+    /// Section 12.1: a subgrid of its columns inside a subgrid of its rows measures its items in its own rows: an
+    /// `aspect-ratio: 1` item in the second of own rows `50px 50px` makes the outer grid's auto column 50px.
+    #[test]
+    fn a_column_subgrid_inside_a_row_subgrid_measures_its_items_in_its_own_rows() {
+        let mut tree = Tree::default();
+        let square = tree.leaf(Style { aspect_ratio: Some(1.0), grid_row: columns_at(2, 3), ..Style::default() });
+        let inner =
+            Style { gap: zero(), grid_template_rows: columns(&[50.0, 50.0]), ..subgrid_columns(Style::default()) };
+        let inner = tree.add(inner, vec![square]);
+        let outer =
+            Style { display: Display::Grid, grid_template_subgrid: Point { x: false, y: true }, ..Style::default() };
+        let outer = tree.add(outer, vec![inner]);
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: vec![auto()],
+            grid_template_rows: vec![auto()],
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![outer]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 50.0);
+        assert_eq!(tree.rect(outer).2, 50.0);
+        assert_eq!(tree.rect(square), (0.0, 50.0, 50.0, 50.0));
+    }
 }

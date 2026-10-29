@@ -158,6 +158,13 @@ pub(super) struct Collect<S: CheapCloneStr> {
     /// Whether `given` holds the parent's sized tracks rather than stand-ins
     // VIPER-PATCH(subgrid-own-tracks): the field.
     pub sized: bool,
+    /// Set by the parent when it does not size the own tracks of a subgrid of one axis: the subgrid then hands over
+    /// its items only when at most one own track fills its area in the other axis
+    // VIPER-PATCH(subgrid-own-tracks): the field.
+    pub fallback: bool,
+    /// Set when the subgrid hands over no items and sizes the parent's tracks as an ordinary item instead
+    // VIPER-PATCH(subgrid-own-tracks): the field, as subgrid-sizing's was.
+    pub ordinary: bool,
 }
 
 impl<S: CheapCloneStr> Collect<S> {
@@ -175,7 +182,7 @@ impl<S: CheapCloneStr> Collect<S> {
             vertical: stand_in(subgrid.axes.vertical, item.row, &subgrid.line_names.vertical, gap.vertical),
         };
         // VIPER-PATCH(subgrid-own-tracks): no own tracks to size.
-        Collect { given, gap, items: Vec::new(), own: None, sized: false }
+        Collect { given, gap, items: Vec::new(), own: None, sized: false, fallback: false, ordinary: false }
     }
 
     /// The parent's sized tracks in place of the stand-ins, for `subgrid`, its item `item`

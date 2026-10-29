@@ -503,12 +503,42 @@ fn grid_layout<Tree: LayoutGridContainer>(
 
     // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
     if let Some(collect) = collect {
+        // VIPER-PATCH(subgrid-own-tracks): a subgrid of one axis whose own tracks its parent does not size measures its
+        // items across its area in the other axis, which is right only when the subgrid itself is stretched there with
+        // no size of its own (collect_subgrid_items checks that) and it has at most one own track there that fills the
+        // area; otherwise it sizes the parent's tracks as an ordinary item.
+        if collect.fallback {
+            let (own, content): (&[GridTrack], AlignContent) = match (&given.horizontal, &given.vertical) {
+                (None, Some(_)) => (&columns[..], justify_content),
+                (Some(_), None) => (&rows[..], align_content),
+                _ => (&[], AlignContent::STRETCH),
+            };
+            let mut own = own.iter().filter(|track| track.kind == GridTrackKind::Track);
+            let fills = match (own.next(), own.next()) {
+                (None, _) => true,
+                (Some(track), None) => {
+                    track.is_flexible()
+                        || (track.max_track_sizing_function.is_auto() && content == AlignContent::STRETCH)
+                }
+                _ => false,
+            };
+            if !fills {
+                collect.ordinary = true;
+                return LayoutOutput::HIDDEN;
+            }
+        }
         drop(grid_template_rows);
         drop(grid_template_columns);
         drop(grid_auto_rows);
         drop(grid_auto_columns);
         drop(style);
-        let mut nested = collect_subgrid_items(tree, &mut items, &mut subgrids, own_gap, inner_node_size);
+        // VIPER-PATCH(subgrid-own-tracks): the own tracks it sizes, those of the axis it does not subgrid when it
+        // subgrids the other only, are those of its subgrid items of one axis it sizes too.
+        let handled = InBothAbsAxis {
+            horizontal: given.horizontal.is_none() && given.vertical.is_some(),
+            vertical: given.vertical.is_none() && given.horizontal.is_some(),
+        };
+        let mut nested = collect_subgrid_items(tree, &mut items, &mut subgrids, own_gap, inner_node_size, handled);
         items.append(&mut nested);
         // VIPER-PATCH(subgrid-own-tracks): its own tracks of the axis it does not subgrid, once the parent's are sized.
         if let Some(axis) = collect.own {
@@ -544,7 +574,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
                 let size = tracks[item.track_range_excluding_lines(axis)].iter().map(|track| track.base_size).sum();
                 item.own_area.set(axis, Some(size));
             }
-            let own = OwnTracks { axis, columns: &columns, rows: &rows, sized: collect.sized, gap: own_gap };
+            let own =
+                OwnTracks { axis, columns: &columns, rows: &rows, sized: collect.sized, estimate: false, gap: own_gap };
             size_own_tracks(tree, &mut items, &subgrids, &own, inner_node_size);
         }
         let half = InBothAbsAxis {
@@ -566,7 +597,8 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // place, until the tracks are aligned.
     let item_count = items.len();
     // VIPER-PATCH(subgrid-own-tracks): and where.
-    let mut collected = collect_subgrid_items(tree, &mut items, &mut subgrids, own_gap, inner_node_size);
+    let handled = InBothAbsAxis { horizontal: true, vertical: true };
+    let mut collected = collect_subgrid_items(tree, &mut items, &mut subgrids, own_gap, inner_node_size, handled);
     items.append(&mut collected);
 
     // 6. Track Sizing
@@ -578,6 +610,17 @@ fn grid_layout<Tree: LayoutGridContainer>(
     // For each item, and in each axis, determine whether the item crosses any flexible (fr) tracks
     // Record this as a boolean (per-axis) on each item for later use in the track-sizing algorithm
     determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &columns, &rows);
+    // VIPER-PATCH(subgrid-own-tracks): the own rows of the subgrids of columns, in the rows as estimated for the
+    // columns (CSS Grid 2 section 12.1, step 1), for their items to size the columns in them.
+    let own = OwnTracks {
+        axis: AbstractAxis::Block,
+        columns: &columns,
+        rows: &rows,
+        sized: false,
+        estimate: true,
+        gap: own_gap,
+    };
+    size_own_tracks(tree, &mut items, &subgrids, &own, inner_node_size);
 
     // Determine if the grid has any baseline aligned items
     // VIPER-PATCH(last-baseline): or last-baseline aligned items.
@@ -620,7 +663,14 @@ fn grid_layout<Tree: LayoutGridContainer>(
 
     items.iter_mut().for_each(|item| item.grid_area_size_cache = None);
     // VIPER-PATCH(subgrid-own-tracks): the own columns of the subgrids of rows, in the columns just sized.
-    let own = OwnTracks { axis: AbstractAxis::Inline, columns: &columns, rows: &rows, sized: false, gap: own_gap };
+    let own = OwnTracks {
+        axis: AbstractAxis::Inline,
+        columns: &columns,
+        rows: &rows,
+        sized: false,
+        estimate: false,
+        gap: own_gap,
+    };
     size_own_tracks(tree, &mut items, &subgrids, &own, inner_node_size);
 
     // Run track sizing algorithm for Block axis
@@ -643,7 +693,14 @@ fn grid_layout<Tree: LayoutGridContainer>(
     let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<LayoutFloat>();
     // VIPER-PATCH(subgrid-own-tracks): the own rows of the subgrids of columns, in the rows just sized, for the items'
     // contributions to the columns to be checked below (CSS Grid 2 section 12.1, step 3).
-    let own = OwnTracks { axis: AbstractAxis::Block, columns: &columns, rows: &rows, sized: true, gap: own_gap };
+    let own = OwnTracks {
+        axis: AbstractAxis::Block,
+        columns: &columns,
+        rows: &rows,
+        sized: true,
+        estimate: false,
+        gap: own_gap,
+    };
     size_own_tracks(tree, &mut items, &subgrids, &own, inner_node_size);
 
     debug_log!("initial_column_sum", dbg:initial_column_sum);
@@ -763,7 +820,14 @@ fn grid_layout<Tree: LayoutGridContainer>(
             has_baseline_aligned_item,
         );
         // VIPER-PATCH(subgrid-own-tracks): the own columns of the subgrids of rows again, in the columns re-sized.
-        let own = OwnTracks { axis: AbstractAxis::Inline, columns: &columns, rows: &rows, sized: true, gap: own_gap };
+        let own = OwnTracks {
+            axis: AbstractAxis::Inline,
+            columns: &columns,
+            rows: &rows,
+            sized: true,
+            estimate: false,
+            gap: own_gap,
+        };
         size_own_tracks(tree, &mut items, &subgrids, &own, inner_node_size);
 
         // The column widths may have changed, so the items' intrinsic height contributions need to be recomputed
@@ -1178,21 +1242,38 @@ fn grid_layout<Tree: LayoutGridContainer>(
 /// tracks of their subgridded axes (CSS Grid 2 section 9); the subgrid items themselves size those of their others
 /// only. `gap` is the grid's own, `parent_size` its content box.
 // VIPER-PATCH(subgrid-sizing): the function.
-// VIPER-PATCH(subgrid-own-tracks): and records where each subgrid's are, after `items`.
+// VIPER-PATCH(subgrid-own-tracks): and records where each subgrid's are, after `items`. `handled` is, per axis,
+// whether the grid sizes the own tracks of its subgrid items that do not subgrid that axis and subgrid the other.
 fn collect_subgrid_items<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     items: &mut [GridItem],
     subgrids: &mut [SubgridItem<Tree::CustomIdent>],
     gap: InBothAbsAxis<LayoutFloat>,
     parent_size: Size<Option<LayoutFloat>>,
+    handled: InBothAbsAxis<bool>,
 ) -> Vec<GridItem> {
     let inputs = collect_inputs(parent_size);
     let mut collected = Vec::new();
     for subgrid in subgrids {
         let item = &mut items[subgrid.index];
+        // VIPER-PATCH(subgrid-own-tracks): one whose own tracks the grid does not size hands over its items only when
+        // it is its area less its margins in the axis it does not subgrid, where they are measured across it;
+        // otherwise it sizes the parent's tracks as an ordinary item.
+        let fallback =
+            (!subgrid.axes.horizontal && !handled.horizontal) || (!subgrid.axes.vertical && !handled.vertical);
+        let fills = (subgrid.axes.horizontal || item.fills_area(AbsoluteAxis::Horizontal))
+            && (subgrid.axes.vertical || item.fills_area(AbsoluteAxis::Vertical));
+        if fallback && !fills {
+            continue;
+        }
         item.sizes_tracks = Size { width: !subgrid.axes.horizontal, height: !subgrid.axes.vertical };
         let mut collect = subgrid::Collect::new(subgrid, item, gap);
+        collect.fallback = fallback;
         grid_layout(tree, item.node, inputs, false, Some(&mut collect));
+        if collect.ordinary {
+            item.sizes_tracks = Size { width: true, height: true };
+            continue;
+        }
         let start = collected.len();
         collected.extend(subgrid::translate(subgrid, item, collect.items));
         subgrid.collected = start + items.len()..collected.len() + items.len();
@@ -1226,6 +1307,9 @@ struct OwnTracks<'a> {
     rows: &'a [GridTrack],
     /// Whether the grid's tracks of the other axis are sized too
     sized: bool,
+    /// Whether the grid's tracks of `axis` are not sized yet: a span of them is the sum of their definite maximums,
+    /// and indefinite if one has none
+    estimate: bool,
     /// The grid's own gaps
     gap: InBothAbsAxis<LayoutFloat>,
 }
@@ -1233,8 +1317,8 @@ struct OwnTracks<'a> {
 /// Size the own tracks of `own.axis` of each of the grid's subgrid items that subgrids the other axis only, in the
 /// item's box in the grid's tracks of that axis, which are sized, and give its collected items their areas there:
 /// the items of a subgrid of one axis are measured in its own tracks of the other (CSS Grid 2 section 12.1).
-/// `parent_size` is the grid's content box. Not yet: a subgrid of one axis inside a subgrid of both, or whose own axis
-/// the subgrid of one axis it is in subgrids, has its items measured across its area in the other axis.
+/// `parent_size` is the grid's content box. A subgrid of one axis inside a subgrid of both, or whose own axis the
+/// subgrid of one axis it is in subgrids, is not among them: collect_subgrid_items keeps its earlier fallback.
 // VIPER-PATCH(subgrid-own-tracks): the function.
 fn size_own_tracks<Tree: LayoutGridContainer>(
     tree: &mut Tree,
@@ -1248,13 +1332,20 @@ fn size_own_tracks<Tree: LayoutGridContainer>(
     for subgrid in subgrids.iter().filter(|subgrid| !subgrid.axes.get(absolute) && subgrid.axes.get(other)) {
         let item = &items[subgrid.index];
         let tracks = if axis == AbstractAxis::Inline { own.columns } else { own.rows };
-        let area: LayoutFloat =
-            tracks[item.track_range_excluding_lines(axis)].iter().map(|track| track.base_size).sum();
+        let span = tracks[item.track_range_excluding_lines(axis)].iter();
+        let area: Option<LayoutFloat> = if own.estimate {
+            let basis = parent_size.get(axis);
+            span.map(|track| track.max_track_sizing_function.definite_value(basis, |v, b| tree.calc(v, b))).sum()
+        } else {
+            Some(span.map(|track| track.base_size).sum())
+        };
         let margins = item.margins_axis_sums_with_baseline_shims(parent_size.width, tree).get(axis);
-        let size = item.known_dimensions(tree, Size::NONE.with(axis, Some(area))).get(axis);
+        let size = item.known_dimensions(tree, Size::NONE.with(axis, area)).get(axis);
+        let available =
+            area.map_or(AvailableSpace::MaxContent, |area| AvailableSpace::Definite(f32_max(area - margins, 0.0)));
         let inputs = LayoutInput {
             known_dimensions: Size::NONE.with(axis, size),
-            available_space: Size::MAX_CONTENT.with(axis, AvailableSpace::Definite(f32_max(area - margins, 0.0))),
+            available_space: Size::MAX_CONTENT.with(axis, available),
             ..collect_inputs(parent_size)
         };
         let mut collect = subgrid::Collect::new(subgrid, item, own.gap);
@@ -1264,8 +1355,13 @@ fn size_own_tracks<Tree: LayoutGridContainer>(
         collect.own = Some(axis);
         grid_layout(tree, item.node, inputs, false, Some(&mut collect));
         let measured = subgrid::translate(subgrid, &items[subgrid.index], collect.items);
-        // The same items as collected, in the same order
+        // The same items as collected, in the same order, unless a nested subgrid whose own tracks are not sized here
+        // decided otherwise in the subgrid's box: then the subgrid sizes the parent's tracks as an ordinary item
         if measured.len() != subgrid.collected.len() {
+            items[subgrid.index].sizes_tracks = Size { width: true, height: true };
+            items[subgrid.collected.clone()]
+                .iter_mut()
+                .for_each(|item| item.sizes_tracks = Size { width: false, height: false });
             continue;
         }
         for (item, measured) in items[subgrid.collected.clone()].iter_mut().zip(measured) {
