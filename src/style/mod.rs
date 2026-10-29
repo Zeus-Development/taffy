@@ -950,7 +950,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     #[cfg(feature = "grid")]
     pub grid_template_subgrid: Point<bool>,
     /// Whether the column gap (`width`) and the row gap (`height`) are `normal`, which [`Self::gap`] cannot say: see
-    /// [`GridContainerStyle::gap_normal`].
+    /// [`GridContainerStyle::gap_normal`]. `false` by default, although CSS's initial gap is `normal`, so a default
+    /// `Style`'s subgrid has a zero gap of its own rather than its parent's.
     // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
     #[cfg(feature = "grid")]
     #[cfg_attr(feature = "serde", serde(default))]
