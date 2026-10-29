@@ -931,7 +931,7 @@ mod subgrid {
     }
 
     /// A grid with columns 50px, 100px and 150px and a 10px column gap (lines at 0, 60, 170 and 320) and rows of
-    /// 10px, with one child. Its rows are fixed: a subgrid's items do not size its parent's tracks yet (V13b-2f3b).
+    /// 10px, with one child
     fn parent(tree: &mut Tree, child: usize, style: Style<String>) -> usize {
         let parent = Style {
             display: Display::Grid,
@@ -943,8 +943,15 @@ mod subgrid {
         tree.add(parent, vec![child])
     }
 
+    /// A subgrid of its columns, with the 10px column gap of the parents here (a `Style`'s gap is never `normal`), so
+    /// that its gutters are theirs
     fn subgrid_columns(style: Style<String>) -> Style<String> {
-        Style { display: Display::Grid, grid_template_subgrid: Point { x: true, y: false }, ..style }
+        Style {
+            display: Display::Grid,
+            grid_template_subgrid: Point { x: true, y: false },
+            gap: Size { width: length(10.0), height: zero() },
+            ..style
+        }
     }
 
     /// Section 9: "the subgrid's own grid tracks are the parent's tracks it spans"; its items, auto-placed one per
@@ -1048,6 +1055,7 @@ mod subgrid {
             grid_auto_flow: GridAutoFlow::Column,
             display: Display::Grid,
             grid_template_subgrid: Point { x: false, y: true },
+            gap: Size { width: zero(), height: length(5.0) },
             ..Style::default()
         };
         let subgrid = tree.add(subgrid, items.clone());
@@ -1071,8 +1079,12 @@ mod subgrid {
     fn a_right_to_left_subgrid_takes_its_parents_columns_in_reverse() {
         let mut tree = Tree::default();
         let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
-        let subgrid =
-            Style { direction: Direction::Rtl, grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = Style {
+            direction: Direction::Rtl,
+            grid_column: columns_at(1, 3),
+            gap: zero(),
+            ..subgrid_columns(Style::default())
+        };
         let subgrid = tree.add(subgrid, items.clone());
         let root = Style {
             display: Display::Grid,
@@ -1209,7 +1221,8 @@ mod subgrid {
         let mut tree = Tree::default();
         let row = |row: i16| Line { start: line(row), end: line(row + 1) };
         let in_subgrid: Vec<usize> = (0..4).map(|_| tree.leaf(Style::default())).collect();
-        let subgrid = Style { grid_column: columns_at(1, 5), grid_row: row(1), ..subgrid_columns(Style::default()) };
+        let subgrid =
+            Style { grid_column: columns_at(1, 5), grid_row: row(1), gap: zero(), ..subgrid_columns(Style::default()) };
         let subgrid = tree.add(subgrid, in_subgrid.clone());
         let plain: Vec<usize> = (0..4i16)
             .map(|at| {
@@ -1249,5 +1262,168 @@ mod subgrid {
         };
         assert_eq!(alone(columns_at(-9, -8)), (0.0, 50.0));
         assert_eq!(alone(Line { start: span(3), end: auto() }), (0.0, 160.0));
+    }
+
+    /// Two auto columns 10px apart, with one child
+    fn auto_parent(tree: &mut Tree, child: usize) -> usize {
+        let root = Style {
+            display: Display::Grid,
+            grid_template_columns: vec![auto(), auto()],
+            grid_auto_rows: vec![length(10.0)],
+            gap: Size { width: length(10.0), height: zero() },
+            ..Style::default()
+        };
+        tree.add(root, vec![child])
+    }
+
+    /// A leaf `width` wide
+    fn wide(tree: &mut Tree, width: f32) -> usize {
+        tree.leaf(Style { size: Size { width: length(width), height: auto() }, ..Style::default() })
+    }
+
+    /// Section 9: a subgrid is empty for sizing in its subgridded axes, and its items size the parent's tracks
+    /// there in its place: items 40px and 70px wide make the parent's auto columns 40px and 70px.
+    #[test]
+    fn a_subgrids_items_size_its_parents_tracks() {
+        let mut tree = Tree::default();
+        let items = vec![wide(&mut tree, 40.0), wide(&mut tree, 70.0)];
+        let subgrid = Style { grid_column: columns_at(1, 3), ..subgrid_columns(Style::default()) };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = auto_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 120.0);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 120.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 40.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (50.0, 0.0, 70.0, 10.0));
+    }
+
+    /// Section 9: the subgrid's margin, border and padding at an edge are extra margin on the items at that edge:
+    /// a 5px left padding and a 3px right margin make the columns 45px and 73px, and the items keep their widths.
+    #[test]
+    fn a_subgrids_edges_are_extra_margin_on_its_edge_items() {
+        let mut tree = Tree::default();
+        let items = vec![wide(&mut tree, 40.0), wide(&mut tree, 70.0)];
+        let subgrid = Style {
+            grid_column: columns_at(1, 3),
+            padding: Rect { left: length(5.0), right: zero(), top: zero(), bottom: zero() },
+            margin: Rect { left: zero(), right: length(3.0), top: zero(), bottom: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = auto_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 128.0);
+        assert_eq!(tree.rect(subgrid), (0.0, 0.0, 125.0, 10.0));
+        assert_eq!(tree.rect(items[0]), (5.0, 0.0, 40.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (55.0, 0.0, 70.0, 10.0));
+    }
+
+    /// Section 9's example: in a 300px grid with 50px gaps and columns `100px 1fr`, a subgrid over both columns
+    /// with a gap of 0 has columns 125px and 175px, with 25px 112.5px and 162.5px, and with 75px 87.5px and
+    /// 137.5px: each gutter keeps its centre and the tracks take half the difference.
+    #[test]
+    fn a_subgrids_own_gap_keeps_the_parents_gutters_centred() {
+        let first_and_second = |gap: f32| {
+            let mut tree = Tree::default();
+            let items: Vec<usize> = (0..2).map(|_| tree.leaf(Style::default())).collect();
+            let subgrid = Style {
+                grid_column: columns_at(1, 3),
+                gap: Size { width: length(gap), height: zero() },
+                ..subgrid_columns(Style::default())
+            };
+            let subgrid = tree.add(subgrid, items.clone());
+            let root = Style {
+                display: Display::Grid,
+                size: Size { width: length(300.0), height: auto() },
+                grid_template_columns: vec![length(100.0), fr(1.0)],
+                grid_auto_rows: vec![length(10.0)],
+                gap: Size { width: length(50.0), height: zero() },
+                ..Style::default()
+            };
+            let root = tree.add(root, vec![subgrid]);
+            tree.lay_out(root);
+            ((tree.rect(items[0]).0, tree.rect(items[0]).2), (tree.rect(items[1]).0, tree.rect(items[1]).2))
+        };
+        assert_eq!(first_and_second(0.0), ((0.0, 125.0), (125.0, 175.0)));
+        assert_eq!(first_and_second(25.0), ((0.0, 112.5), (137.5, 162.5)));
+        assert_eq!(first_and_second(75.0), ((0.0, 87.5), (162.5, 137.5)));
+    }
+
+    /// Section 9: half the difference of the subgrid's gap from the parent's is extra margin on the items it
+    /// separates: with a 30px gap over the parent's 10px, items 40px and 70px wide make the columns 50px and 80px.
+    #[test]
+    fn half_a_subgrids_gap_difference_is_extra_margin_on_its_items() {
+        let mut tree = Tree::default();
+        let items = vec![wide(&mut tree, 40.0), wide(&mut tree, 70.0)];
+        let subgrid = Style {
+            grid_column: columns_at(1, 3),
+            gap: Size { width: length(30.0), height: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = auto_parent(&mut tree, subgrid);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 140.0);
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 40.0, 10.0));
+        assert_eq!(tree.rect(items[1]), (70.0, 0.0, 70.0, 10.0));
+    }
+
+    /// Section 9: the extra margins add up through nested subgrids: an item 60px wide in a subgrid with a 4px left
+    /// padding, nested in the second column of a subgrid with a 2px right padding, makes that column 66px.
+    #[test]
+    fn a_nested_subgrids_items_size_the_outer_grids_tracks() {
+        let mut tree = Tree::default();
+        let item = wide(&mut tree, 60.0);
+        let inner = Style {
+            grid_column: columns_at(2, 3),
+            padding: Rect { left: length(4.0), right: zero(), top: zero(), bottom: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let inner = tree.add(inner, vec![item]);
+        let first = wide(&mut tree, 40.0);
+        let outer = Style {
+            grid_column: columns_at(1, 3),
+            padding: Rect { left: zero(), right: length(2.0), top: zero(), bottom: zero() },
+            ..subgrid_columns(Style::default())
+        };
+        let outer = tree.add(outer, vec![first, inner]);
+        let root = auto_parent(&mut tree, outer);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).2, 116.0);
+        assert_eq!(tree.rect(first), (0.0, 0.0, 40.0, 10.0));
+        assert_eq!(tree.rect(inner), (50.0, 0.0, 64.0, 10.0));
+        assert_eq!(tree.rect(item), (4.0, 0.0, 60.0, 10.0));
+    }
+
+    /// Section 9: a subgrid's items size the parent's rows as they do its columns: items 20px and 30px high make
+    /// the parent's auto rows 20px and 30px.
+    #[test]
+    fn a_subgrids_items_size_its_parents_rows() {
+        let mut tree = Tree::default();
+        let high = |tree: &mut Tree, height: f32| {
+            tree.leaf(Style { size: Size { width: auto(), height: length(height) }, ..Style::default() })
+        };
+        let items = vec![high(&mut tree, 20.0), high(&mut tree, 30.0)];
+        let subgrid = Style {
+            grid_row: columns_at(1, 3),
+            grid_auto_flow: GridAutoFlow::Column,
+            display: Display::Grid,
+            grid_template_subgrid: Point { x: false, y: true },
+            gap: Size { width: zero(), height: length(5.0) },
+            ..Style::default()
+        };
+        let subgrid = tree.add(subgrid, items.clone());
+        let root = Style {
+            display: Display::Grid,
+            size: Size { width: length(40.0), height: auto() },
+            grid_template_rows: vec![auto(), auto()],
+            gap: Size { width: zero(), height: length(5.0) },
+            ..Style::default()
+        };
+        let root = tree.add(root, vec![subgrid]);
+        tree.lay_out(root);
+        assert_eq!(tree.rect(root).3, 55.0);
+        assert_eq!(tree.rect(items[0]), (0.0, 0.0, 40.0, 20.0));
+        assert_eq!(tree.rect(items[1]), (0.0, 25.0, 40.0, 30.0));
     }
 }

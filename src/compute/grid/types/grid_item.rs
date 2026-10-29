@@ -134,6 +134,15 @@ pub(in super::super) struct GridItem {
     /// Out-of-flow candidates bubbled out of this item's subtree (anchors relative to the
     /// container's border box)
     pub oof_candidates: OofCandidates,
+
+    /// Whether the item sizes the tracks of each axis: not in an axis a subgrid item subgrids, whose items size the
+    /// tracks in its place, and in only those axes for one of those items (CSS Grid 2 section 9)
+    // VIPER-PATCH(subgrid-sizing): the field.
+    pub sizes_tracks: Size<bool>,
+    /// The extra margin an item of a subgrid has as it sizes this grid's tracks: the subgrid's margin, border and
+    /// padding at the item's edges at the subgrid's, and half the difference of its gaps at the others
+    // VIPER-PATCH(subgrid-sizing): the field.
+    pub subgrid_margin: Rect<LayoutFloat>,
 }
 
 impl GridItem {
@@ -186,6 +195,9 @@ impl GridItem {
             y_position: 0.0,
             height: 0.0,
             oof_candidates: OofCandidates::NONE,
+            // VIPER-PATCH(subgrid-sizing): a plain item's.
+            sizes_tracks: Size { width: true, height: true },
+            subgrid_margin: Rect::ZERO,
         }
     }
 
@@ -589,7 +601,8 @@ impl GridItem {
         tree: &impl LayoutPartialTree,
         // VIPER-PATCH(layout-float-alias): the alias.
     ) -> Size<LayoutFloat> {
-        Rect {
+        // VIPER-PATCH(subgrid-sizing): the margins, to add the extra margin to.
+        let margin = Rect {
             left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
             right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
@@ -597,8 +610,9 @@ impl GridItem {
             // VIPER-PATCH(last-baseline): the last-baseline shim, below.
             bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
                 + self.last_baseline_shim,
-        }
-        .sum_axes()
+        };
+        // VIPER-PATCH(subgrid-sizing): and its extra margin as an item of a subgrid.
+        (margin + self.subgrid_margin).sum_axes()
     }
 
     /// Compute the item's min content contribution from the provided parameters
@@ -709,6 +723,8 @@ impl GridItem {
             return available_space;
         }
         let margin = self.margin.resolve_or_zero(grid_area_size.width, |val, basis| tree.calc(val, basis));
+        // VIPER-PATCH(subgrid-sizing): and its extra margin as an item of a subgrid.
+        let margin = margin + self.subgrid_margin;
         Size {
             width: available_space.width.map(|width| f32_max(width - margin.horizontal_axis_sum(), 0.0)),
             height: available_space

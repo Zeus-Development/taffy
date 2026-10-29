@@ -247,17 +247,23 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // VIPER-PATCH(size-containment): a size-contained grid container is sized as if it had no items (its
     // explicit tracks still size it), then lays them out in that size.
     let contain = tree.get_grid_container_style(node).contain();
-    let inputs = size_contained_inputs(contain, inputs, |inputs| grid_layout(tree, node, inputs, true));
-    grid_layout(tree, node, inputs, false)
+    // VIPER-PATCH(subgrid-sizing): no request for a subgrid's items.
+    let inputs = size_contained_inputs(contain, inputs, |inputs| grid_layout(tree, node, inputs, true, None));
+    grid_layout(tree, node, inputs, false, None)
 }
 
 /// The grid algorithm, after containment; `as_if_empty` lays the box out without its items
+// VIPER-PATCH(subgrid-sizing): `collect`.
+///
+/// `collect` hands a subgrid's items to its parent grid instead of laying them out.
 // VIPER-PATCH(size-containment): the grid algorithm, after containment.
 fn grid_layout<Tree: LayoutGridContainer>(
     tree: &mut Tree,
     node: NodeId,
     inputs: LayoutInput,
     as_if_empty: bool,
+    // VIPER-PATCH(subgrid-sizing): the request.
+    collect: Option<subgrid::Collect<'_, Tree::CustomIdent>>,
 ) -> LayoutOutput {
     let LayoutInput { known_dimensions, run_mode, .. } = inputs;
 
@@ -295,7 +301,11 @@ fn grid_layout<Tree: LayoutGridContainer>(
     let grid_auto_columns = style.grid_auto_columns();
     let grid_auto_rows = style.grid_auto_rows();
     // VIPER-PATCH(subgrid-placement): the parent's tracks of the subgridded axes, when a parent gave them.
-    let given = subgrid::given(tree.subgrid_tracks(node));
+    // VIPER-PATCH(subgrid-sizing): or their stand-ins when the parent asks for the items.
+    let given = match &collect {
+        Some(collect) => collect.given.clone(),
+        None => subgrid::given(tree.subgrid_tracks(node)),
+    };
 
     debug_log!("parent_size", dbg:inputs.parent_size);
     debug_log!("outer_node_size", dbg:outer_node_size);
@@ -451,6 +461,32 @@ fn grid_layout<Tree: LayoutGridContainer>(
         .into_iter()
         .map(|(index, axes, reversed)| SubgridItem::new(index, &items[index], axes, reversed, &name_resolver))
         .collect();
+    // VIPER-PATCH(subgrid-sizing): the gaps, and the edges, the container's subgrid items and its own items see.
+    let gap_normal = style.gap_normal();
+    let gap = style.gap().resolve_or_zero(inner_node_size, |val, basis| tree.calc(val, basis));
+    let own_gap = InBothAbsAxis {
+        horizontal: subgrid::effective_gap(&given.horizontal, gap_normal.width, gap.width),
+        vertical: subgrid::effective_gap(&given.vertical, gap_normal.height, gap.height),
+    };
+    let margin = style.margin().resolve_or_zero(inputs.parent_size.width, |val, basis| tree.calc(val, basis));
+    let insets = subgrid::insets(margin + content_box_inset, direction.is_rtl());
+    // VIPER-PATCH(subgrid-sizing): a subgrid asked for its items hands them over, its subgrid items' with them.
+    if let Some(collect) = collect {
+        drop(grid_template_rows);
+        drop(grid_template_columns);
+        drop(grid_auto_rows);
+        drop(grid_auto_columns);
+        drop(style);
+        let mut nested = collect_subgrid_items(tree, &mut items, &subgrids, own_gap, inner_node_size);
+        items.append(&mut nested);
+        let half = InBothAbsAxis {
+            horizontal: (own_gap.horizontal - collect.gap.horizontal) / 2.0,
+            vertical: (own_gap.vertical - collect.gap.vertical) / 2.0,
+        };
+        subgrid::add_margins(&mut items, &given, insets, half, direction.is_rtl());
+        collect.items.append(&mut items);
+        return LayoutOutput::HIDDEN;
+    }
 
     // 5. Initialize Tracks
     // Initialize (explicit and implicit) grid tracks (and gutters)
@@ -474,15 +510,12 @@ fn grid_layout<Tree: LayoutGridContainer>(
         |row_index| cell_occupancy_matrix.row_is_occupied(row_index),
     );
     // VIPER-PATCH(subgrid-placement): a subgridded axis's tracks are the parent's.
-    if given.horizontal.is_some() || given.vertical.is_some() {
-        let margin = style.margin().resolve_or_zero(inputs.parent_size.width, |val, basis| tree.calc(val, basis));
-        let insets = subgrid::insets(margin + content_box_inset, direction.is_rtl());
-        if let Some(axis) = &given.horizontal {
-            subgrid::parent_tracks(&mut columns, axis, insets.horizontal);
-        }
-        if let Some(axis) = &given.vertical {
-            subgrid::parent_tracks(&mut rows, axis, insets.vertical);
-        }
+    // VIPER-PATCH(subgrid-sizing): its own gaps.
+    if let Some(axis) = &given.horizontal {
+        subgrid::parent_tracks(&mut columns, axis, insets.horizontal, (!gap_normal.width).then_some(gap.width));
+    }
+    if let Some(axis) = &given.vertical {
+        subgrid::parent_tracks(&mut rows, axis, insets.vertical, (!gap_normal.height).then_some(gap.height));
     }
 
     drop(grid_template_rows);
@@ -490,6 +523,12 @@ fn grid_layout<Tree: LayoutGridContainer>(
     drop(grid_auto_rows);
     drop(grid_auto_columns);
     drop(style);
+
+    // VIPER-PATCH(subgrid-sizing): the items of the subgrid items size the tracks of their subgridded axes in their
+    // place, until the tracks are aligned.
+    let item_count = items.len();
+    let mut collected = collect_subgrid_items(tree, &mut items, &subgrids, own_gap, inner_node_size);
+    items.append(&mut collected);
 
     // 6. Track Sizing
 
@@ -761,6 +800,9 @@ fn grid_layout<Tree: LayoutGridContainer>(
         return LayoutOutput::from_outer_size(container_border_box);
     }
 
+    // VIPER-PATCH(subgrid-sizing): the grid's own items only, from here.
+    items.truncate(item_count);
+
     // 8. Track Alignment
 
     // Align columns
@@ -806,7 +848,9 @@ fn grid_layout<Tree: LayoutGridContainer>(
         // VIPER-PATCH(subgrid-placement): a subgrid lays its subgridded axes out in the parent's final tracks.
         let subgrid = subgrids.binary_search_by_key(&index, |subgrid| subgrid.index).ok().map(|at| &subgrids[at]);
         if let Some(subgrid) = subgrid {
-            tree.set_subgrid_tracks(item.node, Some(subgrid.tracks(item, &columns, &rows, direction.is_rtl())));
+            // VIPER-PATCH(subgrid-sizing): and the grid's gaps.
+            let tracks = subgrid.tracks(item, &columns, &rows, direction.is_rtl(), own_gap);
+            tree.set_subgrid_tracks(item.node, Some(tracks));
         }
         // Tracks are stored in logical order. In RTL the physical offsets are assigned
         // right-to-left, so an item's physical left edge is derived from its logical end
@@ -1079,6 +1123,38 @@ fn grid_layout<Tree: LayoutGridContainer>(
     output.oof_candidates = oof_candidates;
     output.oof_positioning_area = oof_positioning_area;
     output
+}
+
+/// The items of a grid's subgrid items, each in the grid's lines and with its extra margins, for them to size the
+/// tracks of their subgridded axes (CSS Grid 2 section 9); the subgrid items themselves size those of their others
+/// only. `gap` is the grid's own, `parent_size` its content box.
+// VIPER-PATCH(subgrid-sizing): the function.
+fn collect_subgrid_items<Tree: LayoutGridContainer>(
+    tree: &mut Tree,
+    items: &mut [GridItem],
+    subgrids: &[SubgridItem<Tree::CustomIdent>],
+    gap: InBothAbsAxis<LayoutFloat>,
+    parent_size: Size<Option<LayoutFloat>>,
+) -> Vec<GridItem> {
+    let inputs = LayoutInput {
+        run_mode: RunMode::PerformLayout,
+        sizing_mode: SizingMode::InherentSize,
+        axis: RequestedAxis::Both,
+        known_dimensions: Size::NONE,
+        known_dimensions_are_definite: Size { width: true, height: true },
+        parent_size,
+        available_space: Size::MAX_CONTENT,
+        vertical_margins_are_collapsible: Line::FALSE,
+    };
+    let mut collected = Vec::new();
+    for subgrid in subgrids {
+        let item = &mut items[subgrid.index];
+        item.sizes_tracks = Size { width: !subgrid.axes.horizontal, height: !subgrid.axes.vertical };
+        let mut inner = Vec::new();
+        grid_layout(tree, item.node, inputs, false, Some(subgrid::Collect::new(subgrid, item, gap, &mut inner)));
+        collected.extend(subgrid::translate(subgrid, item, inner));
+    }
+    collected
 }
 
 /// Resolve the static-position rectangle (the grid area determined by the grid-placement

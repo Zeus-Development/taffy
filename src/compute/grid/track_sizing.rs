@@ -662,9 +662,12 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
     // Items that cross a flexible track are all processed together in a single batch (regardless of their span), so
     // they only need to be moved to the end of the list. And the order in which items within a batch are processed
     // does not affect the result, so the remaining items only need to be sorted if any of them span more than one track.
-    let mut partitioned_items: FrontBackVecBuilder<&mut GridItem> = FrontBackVecBuilder::with_capacity(items.len());
+    // VIPER-PATCH(subgrid-sizing): only the items that size the axis's tracks.
+    let sizing = items.iter().filter(|item| item.sizes_tracks.get(axis)).count();
+    let mut partitioned_items: FrontBackVecBuilder<&mut GridItem> = FrontBackVecBuilder::with_capacity(sizing);
     let mut needs_sort = false;
-    for item in items.iter_mut() {
+    // VIPER-PATCH(subgrid-sizing): the same items.
+    for item in items.iter_mut().filter(|item| item.sizes_tracks.get(axis)) {
         if item.crosses_flexible_track(axis) {
             partitioned_items.push_back(item);
         } else {
@@ -1423,7 +1426,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
                 // that the item crosses and a space to fill of the item’s max-content contribution.
                 items
                     .iter_mut()
-                    .filter(|item| item.crosses_flexible_track(axis))
+                    // VIPER-PATCH(subgrid-sizing): only the items that size the axis's tracks.
+                    .filter(|item| item.sizes_tracks.get(axis) && item.crosses_flexible_track(axis))
                     .map(|item| {
                         let max_content_contribution = item_sizer.max_content_contribution(item, axis_tracks);
                         let tracks = &axis_tracks[item.track_range_excluding_lines(axis)];

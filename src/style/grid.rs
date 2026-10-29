@@ -241,6 +241,15 @@ pub trait GridContainerStyle: CoreStyle {
         Style::<Self::CustomIdent>::DEFAULT.gap
     }
 
+    /// Whether each of [`Self::gap`]'s values is `normal` rather than a length (in which case `gap` answers zero).
+    /// A subgrid's `normal` gap in a subgridded axis is its parent's (CSS Grid 2 section 9); a length is the subgrid's
+    /// own, and half its difference from the parent's is extra margin on the items it separates.
+    // VIPER-PATCH(subgrid-sizing): whether a gap is `normal`.
+    #[inline(always)]
+    fn gap_normal(&self) -> Size<bool> {
+        Size { width: false, height: false }
+    }
+
     // Alignment properties
 
     /// How should content contained within this item be aligned in the cross/block axis
