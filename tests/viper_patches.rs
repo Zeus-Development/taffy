@@ -1812,3 +1812,140 @@ mod subgrid {
         assert_eq!(tree.rect(square), (0.0, 50.0, 50.0, 50.0));
     }
 }
+
+// VIPER-PATCH(float-beside-earlier-float): a float that starts beside an earlier, shorter float and reaches below
+// it is recorded down to its own bottom, so what lies below the shorter float is still placed beside it or cleared
+// past it (CSS 2.1 sections 9.5 and 9.5.1).
+mod float_beside_earlier_float {
+    use taffy::prelude::*;
+    use taffy::style::{Clear, Direction, Float, FloatDirection};
+    use taffy::{FloatContext, LayoutFloat};
+
+    /// A block box.
+    fn block() -> Style {
+        Style { display: Display::Block, ..Default::default() }
+    }
+
+    /// A float context 300px wide.
+    fn context() -> FloatContext {
+        let mut context = FloatContext::new();
+        context.set_width(300.0);
+        context
+    }
+
+    /// Places a `width` × `height` float at `min_y` in a containing block with `insets`, and returns its (x, y).
+    fn place(
+        context: &mut FloatContext,
+        size: (LayoutFloat, LayoutFloat),
+        min_y: LayoutFloat,
+        insets: [LayoutFloat; 2],
+        direction: FloatDirection,
+    ) -> (LayoutFloat, LayoutFloat) {
+        let size = Size { width: size.0, height: size.1 };
+        let point = context.place_floated_box(size, min_y, insets, direction, Clear::None);
+        (point.x, point.y)
+    }
+
+    /// A right float 40px tall beside a left one 20px tall still narrows the content at y 30, below the left
+    /// float, and no longer at its own bottom.
+    #[test]
+    fn a_float_on_the_other_side_keeps_its_part_below_the_shorter_float() {
+        let mut context = context();
+        place(&mut context, (100.0, 20.0), 0.0, [0.0, 0.0], FloatDirection::Left);
+        assert_eq!(place(&mut context, (50.0, 40.0), 0.0, [0.0, 0.0], FloatDirection::Right), (250.0, 0.0));
+        assert!(context.has_active_floats(30.0));
+        let slot = context.find_content_slot(30.0, [0.0, 0.0], Clear::None, None);
+        assert_eq!((slot.x, slot.y, slot.width), (0.0, 30.0, 250.0));
+        assert!(!context.has_active_floats(40.0));
+    }
+
+    /// A left float stacked beside a shorter left float: a third left float at y 25, below the first, goes to the
+    /// right of the second (rule 2), and the content there starts after it.
+    #[test]
+    fn a_float_on_the_same_side_keeps_its_part_below_the_shorter_float() {
+        let mut context = context();
+        place(&mut context, (100.0, 20.0), 0.0, [0.0, 0.0], FloatDirection::Left);
+        assert_eq!(place(&mut context, (30.0, 40.0), 0.0, [0.0, 0.0], FloatDirection::Left), (100.0, 0.0));
+        let slot = context.find_content_slot(30.0, [0.0, 0.0], Clear::None, None);
+        assert_eq!((slot.x, slot.width), (130.0, 170.0));
+        assert_eq!(place(&mut context, (20.0, 10.0), 25.0, [0.0, 0.0], FloatDirection::Left), (130.0, 25.0));
+    }
+
+    /// The part below holds no float on the other side: content of a containing block without the floats' 20px
+    /// left inset starts at the edge there.
+    #[test]
+    fn the_part_below_has_no_inset_on_the_other_side() {
+        let mut context = context();
+        place(&mut context, (100.0, 20.0), 0.0, [20.0, 0.0], FloatDirection::Left);
+        assert_eq!(place(&mut context, (50.0, 40.0), 0.0, [20.0, 0.0], FloatDirection::Right), (250.0, 0.0));
+        let slot = context.find_content_slot(30.0, [0.0, 0.0], Clear::None, None);
+        assert_eq!((slot.x, slot.width), (0.0, 250.0));
+    }
+
+    /// A box that establishes a formatting context and clears both sides at y 25 is placed below the taller
+    /// float's bottom, 40, not at 25.
+    #[test]
+    fn a_cleared_formatting_context_goes_below_the_taller_float() {
+        let mut context = context();
+        place(&mut context, (100.0, 20.0), 0.0, [0.0, 0.0], FloatDirection::Left);
+        place(&mut context, (50.0, 40.0), 0.0, [0.0, 0.0], FloatDirection::Right);
+        let slot = context.find_bfc_slot(25.0, [0.0, 0.0], [0.0, 0.0], Direction::Ltr, Clear::Both, None);
+        assert_eq!((slot.x, slot.y, slot.border_width), (0.0, 40.0, 300.0));
+    }
+
+    /// Issue #1128's reproduction in a 300px block: a first block 10px tall whose 50 × 30 float hangs out of it,
+    /// then a block with a 50 × 100 float (beside the first, at x 50, y 10), a 25px block of content, and an
+    /// `extra` box after them. Returns the second block's border box and the extra box's, both (x, y, w, h).
+    fn beside_a_hanging_float(extra: Style) -> [(LayoutFloat, LayoutFloat, LayoutFloat, LayoutFloat); 2] {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        taffy.disable_rounding();
+        let float = |height: f32| Style {
+            display: Display::Block,
+            float: Float::Left,
+            size: Size { width: length(50.0), height: length(height) },
+            ..Default::default()
+        };
+        let line = |height: f32| Style { size: Size { width: auto(), height: length(height) }, ..block() };
+        let first = [taffy.new_leaf(float(30.0)).unwrap(), taffy.new_leaf(line(10.0)).unwrap()];
+        let first = taffy.new_with_children(block(), &first).unwrap();
+        let extra = taffy.new_leaf(extra).unwrap();
+        let second = [taffy.new_leaf(float(100.0)).unwrap(), taffy.new_leaf(line(25.0)).unwrap(), extra];
+        let second = taffy.new_with_children(block(), &second).unwrap();
+        let root = Style { size: Size { width: length(300.0), height: auto() }, ..block() };
+        let root = taffy.new_with_children(root, &[first, second]).unwrap();
+        taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+        let rect = |node: NodeId| {
+            let layout = taffy.layout(node).unwrap();
+            (layout.location.x, layout.location.y, layout.size.width, layout.size.height)
+        };
+        [rect(second), rect(extra)]
+    }
+
+    /// A cleared flow root 5px tall goes below the 100px float (at y 100 in the second block, 110 in the root), and
+    /// the second block grows to hold it; upstream put it right after the content, at y 25.
+    #[test]
+    fn a_cleared_flow_root_beside_a_hanging_float_goes_below_the_taller_float() {
+        let cleared = Style {
+            display: Display::FlowRoot,
+            clear: Clear::Both,
+            size: Size { width: auto(), height: length(5.0) },
+            ..Default::default()
+        };
+        let [second, cleared] = beside_a_hanging_float(cleared);
+        assert_eq!(second, (0.0, 10.0, 300.0, 105.0));
+        assert_eq!(cleared, (0.0, 100.0, 300.0, 5.0));
+    }
+
+    /// A flow root after the content, at y 35 in the root, below the first float, stays beside the 100px float: it
+    /// starts at its right edge, x 100; upstream gave it the whole width.
+    #[test]
+    fn a_flow_root_beside_a_hanging_float_stays_beside_the_taller_float() {
+        let beside = Style {
+            display: Display::FlowRoot,
+            size: Size { width: auto(), height: length(5.0) },
+            ..Default::default()
+        };
+        let [_, beside] = beside_a_hanging_float(beside);
+        assert_eq!(beside, (100.0, 25.0, 200.0, 5.0));
+    }
+}

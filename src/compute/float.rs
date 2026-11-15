@@ -564,9 +564,18 @@ impl FloatContext {
 
         let end_idx = match end {
             None => {
+                // VIPER-PATCH(float-beside-earlier-float): the float starts inside an existing segment and reaches
+                // below the last one, so a segment from the last one's end to the float's bottom records the part
+                // below the earlier floats (CSS 2.1 sections 9.5 and 9.5.1): later floats are placed beside it, and
+                // lines and boxes that establish a formatting context there stay beside it, and are cleared past
+                // it. Upstream only pushed a gap segment up to `min_y`, which is never past the last segment here
+                // (the start segment ends after it), so the float was recorded only down to the earlier floats'
+                // bottom (upstream issue #1211). No float is on the other side there; the loop below sets the
+                // float's side.
                 let last_y_end = self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0);
-                if min_y > last_y_end {
-                    self.segments.push(Segment { y: last_y_end..min_y, insets: [0.0, 0.0], has_float: [false; 2] });
+                let end_y = start_y + floated_box.height;
+                if end_y > last_y_end {
+                    self.segments.push(Segment { y: last_y_end..end_y, insets: [0.0, 0.0], has_float: [false; 2] });
                 }
                 self.segments.len() - 1
             }
