@@ -67,6 +67,7 @@ Branch: viper/taffy-0.15.0
 | `subgrid-placement` | subgrids (CSS Grid 2 section 9): `GridContainerStyle::grid_template_subgrid` (a `Style` field) says whether an axis is subgridded; a parent grid gives each subgrid item its spanned tracks' used sizes and their line names through `LayoutGridContainer::set_subgrid_tracks` around the item's final layout; in a subgridded axis the subgrid's explicit tracks are exactly those, its lines carry the parent's names beside its own, its items are clamped into the span, and it is stretched with its sizes ignored. Its items size the parent's tracks through `subgrid-sizing` | `adr:layout-subgrid` (its placement part; V13b-2f3b closes it) | fork: `subgrid::a_subgrids_columns_are_its_parents`, `a_subgrids_edge_items_keep_clear_of_its_margin_border_and_padding`, `a_subgrids_items_are_placed_by_the_parents_and_its_own_line_names`, `an_item_beyond_the_subgrids_span_is_clamped_into_it`, `a_subgrids_rows_are_its_parents`, `a_right_to_left_subgrid_takes_its_parents_columns_in_reverse`, `a_nested_subgrid_takes_the_outer_grids_tracks`, `a_subgrid_outside_a_grid_has_implicit_tracks`, `a_right_to_left_parent_gives_a_left_to_right_subgrid_its_columns_in_reverse`, `a_right_to_left_parent_gives_a_right_to_left_subgrid_its_columns_in_order`, `a_right_to_left_subgrids_start_edge_is_its_right_edge`, `a_subgrid_is_stretched_in_its_subgridded_axis_whatever_its_aspect_ratio`, `a_subgrids_gutters_take_the_parents_distributed_space_exactly`, `items_before_or_overflowing_the_subgrids_span_are_clamped_into_it`; Viper: `viper-layout::subgrid a_subgrids_columns_and_line_names_are_its_parents` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 | `subgrid-sizing` | a subgrid's items size its parent's tracks (CSS Grid 2 section 9): the subgrid is empty for sizing in its subgridded axes, and its items, each with extra margins (the subgrid's margin, border and padding at its edge lines and half its gap's difference from the parent's at the others, adding up through nested subgrids), take part in the parent's track sizing in its place; `GridContainerStyle::gap_normal` says whether a subgrid's gap is `normal`, the parent's; a subgrid's own gap narrows or widens the parent's gutters about their centres | `adr:layout-subgrid` (V13b-2f3b closes it) | fork: `subgrid::a_subgrids_items_size_its_parents_tracks`, `a_subgrids_edges_are_extra_margin_on_its_edge_items`, `a_subgrids_own_gap_keeps_the_parents_gutters_centred`, `half_a_subgrids_gap_difference_is_extra_margin_on_its_items`, `a_nested_subgrids_items_size_the_outer_grids_tracks`, `a_subgrids_items_size_its_parents_rows`, `a_subgrids_normal_gap_is_its_parents`, `a_column_subgrids_item_shares_no_baseline_with_the_parents_row`, `a_right_to_left_subgrids_items_size_the_parents_columns_in_reverse`; Viper: `viper-layout::subgrid` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 | `subgrid-own-tracks` | the items of a subgrid of one axis are measured in its own tracks of the other (CSS Grid 2 section 12.1): once the parent has sized its tracks of that axis, the subgrid sizes its own tracks there in its box with its items, and each item's area there is its own tracks' span; the parent sizes its other tracks with the items in those areas, and re-checks its columns with them | `adr:layout-subgrid-partial` (V13b-2f3c narrows it) | fork: `subgrid::a_row_subgrids_items_size_the_parents_rows_in_their_own_columns`, `a_column_subgrids_items_size_the_parents_columns_in_their_own_rows`, `a_row_subgrids_item_is_measured_in_its_own_column`, `a_row_subgrids_item_is_measured_in_its_one_own_column`, `a_row_subgrids_item_is_measured_in_its_own_box`, `a_column_subgrids_items_size_the_parents_columns_in_their_own_rows_of_a_fixed_row`, `a_column_subgrid_aligned_to_the_start_of_its_row_measures_its_items_in_its_own_height`, `a_right_to_left_column_subgrids_items_size_the_parents_columns_in_their_own_rows`, `a_row_subgrids_aspect_ratio_does_not_narrow_its_items`, `a_row_subgrid_inside_a_subgrid_of_both_axes_measures_its_items_in_its_own_columns`, `a_column_subgrid_inside_a_row_subgrid_measures_its_items_in_its_own_rows`; Viper: `viper-layout::subgrid` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
+| `float-beside-earlier-float` | a float that starts beside an earlier, shorter float and reaches below the float context's last segment is recorded down to its own bottom (`FloatContext::place_floated_box`): a segment from the last segment's end to the float's bottom, with no float on the other side (CSS 2.1 §9.5, §9.5.1) | none (no register entry existed; Viper issue #1128) | fork: `float_beside_earlier_float::a_float_on_the_other_side_keeps_its_part_below_the_shorter_float`, `a_float_on_the_same_side_keeps_its_part_below_the_shorter_float`, `the_part_below_has_no_inset_on_the_other_side`, `a_cleared_formatting_context_goes_below_the_taller_float`, `a_cleared_flow_root_beside_a_hanging_float_goes_below_the_taller_float`, `a_flow_root_beside_a_hanging_float_stays_beside_the_taller_float`; Viper: `viper-layout::floats a_cleared_table_beside_a_hanging_float_goes_below_the_taller_float` | MIT; the Viper owner's own fix, commit `169e636d91f35aa11020634761b67972801aa460` of this fork's branch `fix-float-tail-below-earlier-floats` (upstream PR #1212), adapted: the new segment has no inset on the float's other side | offered upstream as PR #1212 (open; upstream issue #1211) |
 
 ### `grid-fr-carry`
 
@@ -466,6 +467,40 @@ item. That fallback stays only for the nested shapes listed under "Not yet".
 - **Size.** About 350 changed lines in `src` (303 added, 46 removed); the
   card allows 500.
 
+### `float-beside-earlier-float`
+
+A float placed beside an earlier, shorter float, such as one that hangs out
+of a preceding block, and reaching below the float context's last segment
+(issue #1128 of Viper, TAFFY-FLOAT-SEGMENTS). `place_floated_box_inner`
+recorded such a float only in the existing segments: when no end segment
+was found, it pushed a gap segment up to `min_y`, which is never past the
+last segment there, since the start segment ends after `min_y`. So the
+float was recorded only down to the shorter float's bottom, and below it
+`has_active_floats` answered false: `find_bfc_slot` returned before it
+applied clearance, so a cleared box establishing a formatting context
+(a table, a flow root) was placed as if no float were there, and lines,
+later floats and such boxes there took the whole width.
+
+- **The segment.** The patch pushes a segment from the last segment's end
+  to the float's bottom; the loop that follows sets the float's side on it
+  as on the others. The other side's inset is 0 and `has_float` false: no
+  float is there.
+- **From the owner's fix.** The change is commit `169e636d` of
+  `fix-float-tail-below-earlier-floats` (upstream PR #1212, issue #1211),
+  with one difference: that commit gave the new segment the containing
+  block's insets on both sides, as upstream's segment for a float placed
+  below all others does, so a box in a containing block with smaller
+  insets was narrowed on the side without a float
+  (`the_part_below_has_no_inset_on_the_other_side`). The branch's
+  generated fixtures and its changelog line are not taken.
+- **Measured.** TF-FLOAT (2026-10-18) measured the owner's fix and did
+  not adopt it: its only loss, 8 values of `float-20-overflowing-parent`
+  at 800px, came from layout above the float that Viper did not do yet
+  (lines beside floats, the cleared generated box at the end of the
+  float's parent). Both exist since, and on Viper's corpus the patch now
+  gains 50 values against Chrome's goldens and loses none. Viper's ADR
+  0028 records both measurements.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -535,3 +570,4 @@ Each Viper revision that moves its pin to this branch.
 | V13b-2f3a | the last commit of the range that adds this row | `subgrid-placement` |
 | V13b-2f3b | the last commit of the range that adds this row | `subgrid-sizing` |
 | V13b-2f3c | the last commit of the range that adds this row | `subgrid-own-tracks` |
+| TAFFY-FLOAT-SEGMENTS | the last commit of the range that adds this row | `float-beside-earlier-float` |
