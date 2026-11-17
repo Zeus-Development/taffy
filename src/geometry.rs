@@ -655,14 +655,35 @@ impl Size<Option<LayoutFloat>> {
 /// `value` times the aspect ratio `ratio`, as a single-precision product
 #[inline(always)]
 pub(crate) fn ratio_mul(value: LayoutFloat, ratio: f32) -> LayoutFloat {
-    LayoutFloat::from(value as f32 * ratio)
+    // VIPER-PATCH(aspect-ratio-layout-unit): in the layout unit.
+    in_layout_units(LayoutFloat::from(value as f32 * ratio))
 }
 
 // VIPER-PATCH(layout-f64): see `ratio_mul`.
 /// `value` divided by the aspect ratio `ratio`, as a single-precision quotient
 #[inline(always)]
 pub(crate) fn ratio_div(value: LayoutFloat, ratio: f32) -> LayoutFloat {
-    LayoutFloat::from(value as f32 / ratio)
+    // VIPER-PATCH(aspect-ratio-layout-unit): in the layout unit.
+    in_layout_units(LayoutFloat::from(value as f32 / ratio))
+}
+
+// VIPER-PATCH(aspect-ratio-layout-unit): Chrome's layout unit, 1/64 px (`LayoutUnit`'s
+// `kFixedPointDenominator`, third_party/blink/renderer/platform/geometry/layout_unit.h). Blink
+// transfers a size through an aspect ratio with `LayoutUnit::MulDiv`
+// (third_party/blink/renderer/core/layout/length_utils.cc, `BlockSizeFromAspectRatio` and
+// `InlineSizeFromAspectRatio`), an integer division of layout units that truncates, so a flex
+// column's 503.59375px-wide `aspect-ratio: 4` item is 125.890625px high, not 125.8984375px; an
+// embedder that rounds a flex item's size to its own unit would make it 125.90625px. Upstream keeps
+// the exact quotient. The grid patch `grid-fr-carry` uses the same unit.
+/// `size`, a size through an aspect ratio, truncated toward zero to the layout unit
+#[inline(always)]
+fn in_layout_units(size: LayoutFloat) -> LayoutFloat {
+    const LAYOUT_UNITS_PER_PX: LayoutFloat = 64.0;
+    if !size.is_finite() {
+        return size;
+    }
+    // Rust's float-to-int cast truncates toward zero and saturates (and needs no `std`).
+    (size * LAYOUT_UNITS_PER_PX) as i64 as LayoutFloat / LAYOUT_UNITS_PER_PX
 }
 
 impl<T> Size<Option<T>> {
