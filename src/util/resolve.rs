@@ -129,6 +129,22 @@ impl<In, Out, T: MaybeResolve<In, Out>> MaybeResolve<Size<In>, Size<Out>> for Si
     }
 }
 
+// VIPER-PATCH(indefinite-calc-percentage): a `calc()` length-percentage whose percentage basis is indefinite
+// resolves with its percentage taken as zero, as a lone percentage already does here, instead of dropping its
+// lengths too (CSS Sizing 3 section 5.2.1: a cyclic percentage in a margin or padding resolves against zero for
+// the box's intrinsic size contribution; Chrome evaluates the `calc()` against a basis of 0). `None` for any other
+// value, or with a basis. Upstream drops the whole `calc()`, so a `padding-right: calc(2% + 6px)` adds nothing to a
+// box's min-content contribution where Chrome adds 6px. https://drafts.csswg.org/css-sizing-3/#percentage-sizing
+/// The plain `calc()` `value` evaluated against a basis of 0 when `context` is indefinite; `None` otherwise
+#[cfg(feature = "calc")]
+fn calc_of_zero(
+    value: CompactLength,
+    context: Option<LayoutFloat>,
+    calc: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
+) -> Option<LayoutFloat> {
+    (context.is_none() && value.is_plain_calc()).then(|| calc(value.calc_value(), 0.0))
+}
+
 // VIPER-PATCH(layout-float-alias): the alias.
 impl ResolveOrZero<Option<LayoutFloat>, LayoutFloat> for LengthPercentage {
     /// Will return a default value of result is evaluated to `None`
@@ -138,6 +154,11 @@ impl ResolveOrZero<Option<LayoutFloat>, LayoutFloat> for LengthPercentage {
         context: Option<LayoutFloat>,
         calc: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> LayoutFloat {
+        // VIPER-PATCH(indefinite-calc-percentage): the percentage as zero.
+        #[cfg(feature = "calc")]
+        if let Some(zero) = calc_of_zero(self.0, context, &calc) {
+            return zero;
+        }
         self.maybe_resolve(context, calc).unwrap_or(0.0)
     }
 }
@@ -151,6 +172,11 @@ impl ResolveOrZero<Option<LayoutFloat>, LayoutFloat> for LengthPercentageAuto {
         context: Option<LayoutFloat>,
         calc: impl Fn(*const (), LayoutFloat) -> LayoutFloat,
     ) -> LayoutFloat {
+        // VIPER-PATCH(indefinite-calc-percentage): the percentage as zero.
+        #[cfg(feature = "calc")]
+        if let Some(zero) = calc_of_zero(self.0, context, &calc) {
+            return zero;
+        }
         self.maybe_resolve(context, calc).unwrap_or(0.0)
     }
 }

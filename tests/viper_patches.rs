@@ -2006,3 +2006,66 @@ mod shrink_to_fit_percentages {
         assert_eq!(widths(vec![padded]), (100.0, vec![60.0]));
     }
 }
+
+// VIPER-PATCH(indefinite-calc-percentage): a `calc()` padding or margin whose percentage basis is indefinite keeps
+// its lengths, its percentage taken as zero.
+mod indefinite_calc_percentage {
+    use taffy::prelude::*;
+    use taffy::{
+        compute_leaf_layout, LayoutFloat, LayoutInput, Line, RequestedAxis, ResolveOrZero, RunMode, SizingMode,
+    };
+
+    /// The handle of the one `calc()` these tests use (aligned to 8 bytes, as `calc()` handles must be).
+    static HANDLE: u64 = 0;
+
+    fn handle() -> *const () {
+        std::ptr::from_ref(&HANDLE).cast()
+    }
+
+    /// `calc(2% + 6px)` of `basis`.
+    fn two_percent_plus_six(_: *const (), basis: LayoutFloat) -> LayoutFloat {
+        0.02 * basis + 6.0
+    }
+
+    /// The min-content border-box width of a leaf whose content is 50px wide and whose `padding-right` is
+    /// `calc(2% + 6px)`, its percentage basis `parent_width`.
+    fn min_content_width(parent_width: Option<LayoutFloat>) -> LayoutFloat {
+        let padding = Rect { left: zero(), right: LengthPercentage::calc(handle()), top: zero(), bottom: zero() };
+        let style: Style = Style { padding, ..Default::default() };
+        let inputs = LayoutInput {
+            run_mode: RunMode::ComputeSize,
+            sizing_mode: SizingMode::InherentSize,
+            axis: RequestedAxis::Horizontal,
+            known_dimensions: Size::NONE,
+            known_dimensions_are_definite: Size { width: false, height: false },
+            parent_size: Size { width: parent_width, height: None },
+            available_space: Size { width: AvailableSpace::MinContent, height: AvailableSpace::MaxContent },
+            vertical_margins_are_collapsible: Line::FALSE,
+        };
+        let output =
+            compute_leaf_layout(inputs, &style, two_percent_plus_six, |_, _| Size { width: 50.0, height: 10.0 });
+        output.size.width
+    }
+
+    /// With no percentage basis, the `calc(2% + 6px)` padding adds its 6px to the 50px content (Chrome's 56px);
+    /// upstream dropped the whole `calc()`, 50px.
+    #[test]
+    fn a_calc_padding_of_an_indefinite_basis_keeps_its_length() {
+        assert_eq!(min_content_width(None), 56.0);
+    }
+
+    /// With a 200px basis the `calc()` resolves as before: 4px plus 6px.
+    #[test]
+    fn a_calc_padding_of_a_definite_basis_resolves_against_it() {
+        assert_eq!(min_content_width(Some(200.0)), 60.0);
+    }
+
+    /// A margin's `calc()` keeps its length too, while `auto` and a lone percentage still resolve to zero.
+    #[test]
+    fn a_calc_margin_of_an_indefinite_basis_keeps_its_length() {
+        assert_eq!(LengthPercentageAuto::calc(handle()).resolve_or_zero(None, two_percent_plus_six), 6.0);
+        assert_eq!(LengthPercentageAuto::calc(handle()).resolve_or_zero(Some(100.0), two_percent_plus_six), 8.0);
+        assert_eq!(LengthPercentageAuto::AUTO.resolve_or_zero(None, two_percent_plus_six), 0.0);
+        assert_eq!(LengthPercentageAuto::percent(0.5).resolve_or_zero(None, two_percent_plus_six), 0.0);
+    }
+}
