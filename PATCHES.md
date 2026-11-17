@@ -69,6 +69,7 @@ Branch: viper/taffy-0.15.0
 | `subgrid-own-tracks` | the items of a subgrid of one axis are measured in its own tracks of the other (CSS Grid 2 section 12.1): once the parent has sized its tracks of that axis, the subgrid sizes its own tracks there in its box with its items, and each item's area there is its own tracks' span; the parent sizes its other tracks with the items in those areas, and re-checks its columns with them | `adr:layout-subgrid-partial` (V13b-2f3c narrows it) | fork: `subgrid::a_row_subgrids_items_size_the_parents_rows_in_their_own_columns`, `a_column_subgrids_items_size_the_parents_columns_in_their_own_rows`, `a_row_subgrids_item_is_measured_in_its_own_column`, `a_row_subgrids_item_is_measured_in_its_one_own_column`, `a_row_subgrids_item_is_measured_in_its_own_box`, `a_column_subgrids_items_size_the_parents_columns_in_their_own_rows_of_a_fixed_row`, `a_column_subgrid_aligned_to_the_start_of_its_row_measures_its_items_in_its_own_height`, `a_right_to_left_column_subgrids_items_size_the_parents_columns_in_their_own_rows`, `a_row_subgrids_aspect_ratio_does_not_narrow_its_items`, `a_row_subgrid_inside_a_subgrid_of_both_axes_measures_its_items_in_its_own_columns`, `a_column_subgrid_inside_a_row_subgrid_measures_its_items_in_its_own_rows`; Viper: `viper-layout::subgrid` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 | `float-beside-earlier-float` | a float that starts beside an earlier, shorter float and reaches below the float context's last segment is recorded down to its own bottom (`FloatContext::place_floated_box`): a segment from the last segment's end to the float's bottom, with no float on the other side (CSS 2.1 §9.5, §9.5.1) | none (no register entry existed; Viper issue #1128) | fork: `float_beside_earlier_float::a_float_on_the_other_side_keeps_its_part_below_the_shorter_float`, `a_float_on_the_same_side_keeps_its_part_below_the_shorter_float`, `the_part_below_has_no_inset_on_the_other_side`, `a_cleared_formatting_context_goes_below_the_taller_float`, `a_cleared_flow_root_beside_a_hanging_float_goes_below_the_taller_float`, `a_flow_root_beside_a_hanging_float_stays_beside_the_taller_float`; Viper: `viper-layout::floats a_cleared_table_beside_a_hanging_float_goes_below_the_taller_float` | MIT; the Viper owner's own fix, commit `169e636d91f35aa11020634761b67972801aa460` of this fork's branch `fix-float-tail-below-earlier-floats` (upstream PR #1212), adapted: the new segment has no inset on the float's other side | offered upstream as PR #1212 (open; upstream issue #1211) |
 | `shrink-to-fit-percentages` | a float with `width: auto`, whose width comes from its content, resolves its children's percentage sizes and padding against that width once it is known, not as `auto` (CSS Sizing 3 §5.2.1) | none (no register entry existed; Viper issue #981, L1-FLOATS-2) | fork: `shrink_to_fit_percentages::a_percentage_child_of_a_float_is_its_share_of_the_floats_width`, `a_percentage_padding_widens_a_content_box_child_of_a_float`; Viper: `viper-layout::float_rules a_percentage_child_of_a_shrink_to_fit_float_is_half_its_width` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
+| `indefinite-calc-percentage` | a `calc()` length-percentage (padding, border, margin, gap) whose percentage basis is indefinite resolves with its percentage taken as zero, its lengths kept, where upstream dropped the whole `calc()` (CSS Sizing 3 §5.2.1) | none (no register entry existed; Viper issue #983, L1-CAPTION-CALC-1) | fork: `indefinite_calc_percentage::a_calc_padding_of_an_indefinite_basis_keeps_its_length`, `a_calc_padding_of_a_definite_basis_resolves_against_it`, `a_calc_margin_of_an_indefinite_basis_keeps_its_length`; Viper: `viper-layout css_table::tests::calc::a_captions_calc_padding_widens_an_auto_table_by_its_length` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -532,6 +533,30 @@ that is known.
   float twice and is aimed at floated flex and grid containers; it is not
   taken.
 
+### `indefinite-calc-percentage`
+
+A `calc()` padding, border, margin or gap whose percentage basis is
+indefinite lost its lengths too (Viper issue #983, L1-CAPTION-CALC-1; the
+layout corpus's `table-29-caption-calc-sides`). `ResolveOrZero` for
+`LengthPercentage` and `LengthPercentageAuto` returns 0 when
+`maybe_resolve` has no basis, and `maybe_resolve` gives none for a `calc()`
+then, so `padding-right: calc(2% + 6px)` added nothing to a box's
+min-content contribution. CSS Sizing 3 §5.2.1 resolves such a cyclic
+percentage against zero for the contribution, as `resolve_or_zero` already
+does for a lone percentage; Chrome evaluates the `calc()` against a basis
+of 0 and keeps the 6px.
+
+- **The patch.** With no basis, `resolve_or_zero` evaluates a plain
+  `calc()` through the tree's calc resolver against a basis of 0
+  (`calc_of_zero` in `src/util/resolve.rs`). A value with a basis, a
+  length, a lone percentage and `auto` resolve as before; `maybe_resolve`,
+  and so a `calc()` size (`Dimension`), are unchanged, since an indefinite
+  percentage size behaves as `auto`, not as 0.
+- **Tests.** The indefinite padding and margin tests fail without the
+  patch (the leaf is 50px, not 56px; the margin is 0, not 6px); the
+  definite test passes both ways.
+- **Upstream.** Upstream `main` has the same code.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -607,3 +632,4 @@ Each Viper revision that moves its pin to this branch.
 | V13b-2f3c | the last commit of the range that adds this row | `subgrid-own-tracks` |
 | TAFFY-FLOAT-SEGMENTS | the last commit of the range that adds this row | `float-beside-earlier-float` |
 | L1-FLOATS-2 | the last commit of the range that adds this row | `shrink-to-fit-percentages` |
+| L1-CAPTION-CALC-1 | the last commit of the range that adds this row | `indefinite-calc-percentage` |
