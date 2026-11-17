@@ -691,6 +691,17 @@ fn compute_inner(
     let resolved_border =
         raw_border.resolve_or_zero(Some(percentage_resolution_width), |val, basis| tree.calc(val, basis));
     let resolved_content_box_inset = resolved_padding + resolved_border + scrollbar_gutter;
+    // VIPER-PATCH(shrink-to-fit-percentages): a box whose width came from its content (a float with `width: auto`,
+    // laid out with no known width) resolves its children's percentage sizes and padding against that width once it
+    // is known, as Chrome does (CSS Sizing 3 section 5.2.1: a cyclic percentage is treated as `auto` only for the
+    // intrinsic size contribution, and resolves against the containing block when laying out). The items were
+    // generated against an unknown width, so a `width: 50%` child stretched to the whole width; upstream never
+    // generates them again.
+    if known_dimensions.width.is_none() && !as_if_empty {
+        let inner_width = (container_outer_width - resolved_content_box_inset.horizontal_axis_sum()).max(0.0);
+        let basis = Size { width: Some(inner_width), height: container_content_box_size.height };
+        items = generate_item_list(tree, node_id, basis);
+    }
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let (
         mut inflow_overflow_rect,

@@ -1949,3 +1949,60 @@ mod float_beside_earlier_float {
         assert_eq!(beside, (100.0, 25.0, 200.0, 5.0));
     }
 }
+
+// VIPER-PATCH(shrink-to-fit-percentages): a float with `width: auto` resolves its children's percentages against its
+// width once it is known (CSS Sizing 3 section 5.2.1), as Chrome does; upstream resolved them against no width, as
+// `auto`.
+mod shrink_to_fit_percentages {
+    use taffy::prelude::*;
+    use taffy::style::Float;
+    use taffy::LayoutFloat;
+
+    /// A block 10px tall of `style` (its width `auto` unless `style` gives one).
+    fn child(style: Style) -> Style {
+        Style { display: Display::Block, size: Size { width: style.size.width, height: length(10.0) }, ..style }
+    }
+
+    /// Lays out, in a 300px block, a left float with `width: auto` holding a 100px block and `children`, and returns
+    /// the float's width and each child's border-box width.
+    fn widths(children: Vec<Style>) -> (LayoutFloat, Vec<LayoutFloat>) {
+        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        taffy.disable_rounding();
+        let wide = child(Style { size: Size { width: length(100.0), height: auto() }, ..Default::default() });
+        let mut ids = vec![taffy.new_leaf(wide).unwrap()];
+        ids.extend(children.into_iter().map(|style| taffy.new_leaf(style).unwrap()));
+        let float = Style { display: Display::Block, float: Float::Left, ..Default::default() };
+        let float = taffy.new_with_children(float, &ids).unwrap();
+        let root = Style {
+            display: Display::Block,
+            size: Size { width: length(300.0), height: auto() },
+            ..Default::default()
+        };
+        let root = taffy.new_with_children(root, &[float]).unwrap();
+        taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+        let width = |node: NodeId| taffy.layout(node).unwrap().size.width;
+        (width(float), ids[1..].iter().map(|node| width(*node)).collect())
+    }
+
+    /// A `width: 50%` child adds nothing to the float's width, which its 100px sibling sets, and is then half of
+    /// it, 50px; upstream stretched it to 100px.
+    #[test]
+    fn a_percentage_child_of_a_float_is_its_share_of_the_floats_width() {
+        let half = child(Style { size: Size { width: percent(0.5), height: auto() }, ..Default::default() });
+        assert_eq!(widths(vec![half]), (100.0, vec![50.0]));
+    }
+
+    /// A content-box child 50px wide with `padding-left: 10%` is 60px wide: its padding is 10% of the float's
+    /// width; upstream left the padding out of its border box, 50px.
+    #[test]
+    fn a_percentage_padding_widens_a_content_box_child_of_a_float() {
+        let padding = Rect { left: percent(0.1), right: zero(), top: zero(), bottom: zero() };
+        let padded = child(Style {
+            box_sizing: BoxSizing::ContentBox,
+            size: Size { width: length(50.0), height: auto() },
+            padding,
+            ..Default::default()
+        });
+        assert_eq!(widths(vec![padded]), (100.0, vec![60.0]));
+    }
+}
