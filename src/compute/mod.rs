@@ -206,6 +206,8 @@ fn compute_in_flow_root_layout(
     #[cfg(feature = "block_layout")]
     {
         use crate::BoxSizing;
+        // VIPER-PATCH(aspect-ratio-limits), VIPER-PATCH(aspect-ratio-content-minimum): the shared aspect-ratio code.
+        use crate::compute::common::aspect_ratio::{height_has_content_minimum, size_through_ratio, transfer_limits};
 
         let parent_size = available_space.into_options();
         let style = tree.get_core_container_style(root);
@@ -219,20 +221,23 @@ fn compute_in_flow_root_layout(
             let box_sizing_adjustment =
                 if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-            let min_size = style
-                .min_size()
-                .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let max_size = style
-                .max_size()
-                .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let clamped_style_size = style
-                .size()
-                .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-                .maybe_apply_aspect_ratio(aspect_ratio)
+            // VIPER-PATCH(aspect-ratio-limits): the limits go through the ratio only into an axis whose size is `auto`.
+            let raw_size = style.size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis));
+            let min_size = transfer_limits(
+                style.min_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+                raw_size,
+                aspect_ratio,
+            )
+            .maybe_add(box_sizing_adjustment);
+            let max_size = transfer_limits(
+                style.max_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+                raw_size,
+                aspect_ratio,
+            )
+            .maybe_add(box_sizing_adjustment);
+            // VIPER-PATCH(aspect-ratio-content-minimum): a height through the ratio that the content may exceed is left
+            // to the root's layout.
+            let clamped_style_size = size_through_ratio(raw_size, aspect_ratio, height_has_content_minimum(&style))
                 .maybe_add(box_sizing_adjustment)
                 .maybe_clamp(min_size, max_size);
 

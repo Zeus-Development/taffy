@@ -1,5 +1,9 @@
 //! Computes the CSS block layout algorithm in the case that the block container being laid out contains only block-level boxes
 // VIPER-PATCH(size-containment): the shared containment and baseline code.
+// VIPER-PATCH(aspect-ratio-limits), VIPER-PATCH(aspect-ratio-content-minimum): the shared aspect-ratio code.
+use crate::compute::common::aspect_ratio::{
+    height_has_content_minimum, known_through_ratio, size_through_ratio, transfer_limits,
+};
 use crate::compute::common::containment::{last_baseline_at_margin_edge, size_contained_inputs};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
@@ -449,21 +453,24 @@ fn block_layout(
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-    let min_size = style
-        .min_size()
-        .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
-        .max_size()
-        .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    // VIPER-PATCH(aspect-ratio-limits): the limits go through the ratio only into an axis whose size is `auto`.
+    let raw_size = style.size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis));
+    let min_size = transfer_limits(
+        style.min_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+        raw_size,
+        aspect_ratio,
+    )
+    .maybe_add(box_sizing_adjustment);
+    let max_size = transfer_limits(
+        style.max_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+        raw_size,
+        aspect_ratio,
+    )
+    .maybe_add(box_sizing_adjustment);
     let clamped_style_size = if inputs.sizing_mode == SizingMode::InherentSize {
-        style
-            .size()
-            .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-            .maybe_apply_aspect_ratio(aspect_ratio)
+        // VIPER-PATCH(aspect-ratio-content-minimum): a height through the ratio that the content may exceed is left
+        // to `compute_inner`.
+        size_through_ratio(raw_size, aspect_ratio, height_has_content_minimum(&style))
             .maybe_add(box_sizing_adjustment)
             .maybe_clamp(min_size, max_size)
     } else {
@@ -575,21 +582,21 @@ fn compute_inner(
 
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
-    let size = style
-        .size()
-        .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let min_size = style
-        .min_size()
-        .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
-        .max_size()
-        .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    // VIPER-PATCH(aspect-ratio-limits): the limits go through the ratio only into an axis whose size is `auto`.
+    let raw_size = style.size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis));
+    let size = raw_size.maybe_apply_aspect_ratio(aspect_ratio).maybe_add(box_sizing_adjustment);
+    let min_size = transfer_limits(
+        style.min_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+        raw_size,
+        aspect_ratio,
+    )
+    .maybe_add(box_sizing_adjustment);
+    let max_size = transfer_limits(
+        style.max_size().maybe_resolve(parent_size, |val, basis| tree.calc(val, basis)),
+        raw_size,
+        aspect_ratio,
+    )
+    .maybe_add(box_sizing_adjustment);
 
     // css-sizing-4: a definite size in one axis transfers through `aspect-ratio`
     // to make the other definite. Deriving it from `known_dimensions` self-gates
@@ -598,13 +605,29 @@ fn compute_inner(
     // while probing intrinsic sizes, so measure passes stay content-based. Only a
     // newly-filled axis is adopted (and clamped); an incoming known size is left
     // as the parent resolved it (re-clamping would undo padding/border overrides).
-    let known_dimensions = {
-        let derived = known_dimensions.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
-        Size { width: known_dimensions.width.or(derived.width), height: known_dimensions.height.or(derived.height) }
-    };
+    //
+    // VIPER-PATCH(aspect-ratio-content-minimum): the transfer is in the box that `box-sizing` names (upstream
+    // transfers the border box), and a height it gives is only a floor (`ratio_floor`) where the box's automatic
+    // minimum height is content-based: the box is as high as its content if that is higher. It still resolves the
+    // children's percentages.
+    let derived =
+        known_through_ratio(known_dimensions, aspect_ratio, box_sizing_adjustment).maybe_clamp(min_size, max_size);
+    let ratio_floor =
+        derived.height.filter(|_| known_dimensions.height.is_none() && height_has_content_minimum(&style));
+    // The content's height is capped by the box's own maximum height only, not by one transferred through the
+    // ratio: Chrome makes a `max-width: 40px; aspect-ratio: 2` box with 60px of content 60px high.
+    let own_max_height = style
+        .max_size()
+        .height
+        .maybe_resolve(parent_size.height, |val, basis| tree.calc(val, basis))
+        .maybe_add(box_sizing_adjustment.height);
     let percentage_basis_dimensions = Size {
-        width: known_dimensions.width,
-        height: known_dimensions.height.filter(|_| inputs.known_dimensions_are_definite.height),
+        width: known_dimensions.width.or(derived.width),
+        height: known_dimensions.height.or(derived.height).filter(|_| inputs.known_dimensions_are_definite.height),
+    };
+    let known_dimensions = Size {
+        width: known_dimensions.width.or(derived.width),
+        height: known_dimensions.height.or(derived.height.filter(|_| ratio_floor.is_none())),
     };
     let container_content_box_size = percentage_basis_dimensions.maybe_sub(content_box_inset.sum_axes());
 
@@ -737,7 +760,12 @@ fn compute_inner(
 
     let container_outer_height = known_dimensions
         .height
-        .unwrap_or(intrinsic_outer_height.maybe_clamp(min_size.height, max_size.height))
+        // VIPER-PATCH(aspect-ratio-content-minimum): at least the height through the ratio, the content capped by the
+        // box's own maximum.
+        .unwrap_or(match ratio_floor {
+            Some(floor) => intrinsic_outer_height.maybe_clamp(min_size.height, own_max_height).max(floor),
+            None => intrinsic_outer_height.maybe_clamp(min_size.height, max_size.height),
+        })
         .maybe_max(Some(padding_border_size.height));
     let final_outer_size = Size { width: container_outer_width, height: container_outer_height };
 
@@ -968,6 +996,9 @@ fn generate_item_list(
             let box_sizing_adjustment =
                 if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 
+            // VIPER-PATCH(aspect-ratio-limits): the size, which tells the axes the limits go into.
+            let raw_size = child_style.size().maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis));
+
             let position = child_style.position();
             let overflow = child_style.overflow();
 
@@ -1004,21 +1035,24 @@ fn generate_item_list(
                 #[cfg(feature = "float_layout")]
                 clear: child_style.clear(),
                 size_style: child_style.size(),
-                size: child_style
-                    .size()
-                    .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
+                // VIPER-PATCH(aspect-ratio-content-minimum): a height through the ratio that the content may exceed
+                // is left to the item's layout.
+                size: size_through_ratio(raw_size, aspect_ratio, height_has_content_minimum(&child_style))
                     .maybe_add(box_sizing_adjustment),
-                min_size: child_style
-                    .min_size()
-                    .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
-                max_size: child_style
-                    .max_size()
-                    .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
+                // VIPER-PATCH(aspect-ratio-limits): the limits go through the ratio only into an axis whose size is
+                // `auto`.
+                min_size: transfer_limits(
+                    child_style.min_size().maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis)),
+                    raw_size,
+                    aspect_ratio,
+                )
+                .maybe_add(box_sizing_adjustment),
+                max_size: transfer_limits(
+                    child_style.max_size().maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis)),
+                    raw_size,
+                    aspect_ratio,
+                )
+                .maybe_add(box_sizing_adjustment),
                 overflow,
                 contain,
                 // VIPER-PATCH(scroll-last-baseline): CSS Box Alignment 3 §9.1's legacy rule.

@@ -2069,3 +2069,243 @@ mod indefinite_calc_percentage {
         assert_eq!(LengthPercentageAuto::percent(0.5).resolve_or_zero(None, two_percent_plus_six), 0.0);
     }
 }
+
+// VIPER-PATCH(aspect-ratio-layout-unit), VIPER-PATCH(aspect-ratio-limits), VIPER-PATCH(aspect-ratio-content-minimum):
+// a box's preferred aspect ratio in block, leaf and flex layout as Chrome lays out the corpus designs
+// block-15-aspect-ratio and flex-20-aspect-ratio-items (CSS Sizing 4, `aspect-ratio`).
+mod aspect_ratio {
+    use taffy::prelude::*;
+    use taffy::{compute_leaf_layout, LayoutFloat, Overflow, Point};
+
+    /// Lays out `root` in `taffy`, each leaf measured as content as high as its context (0 without one), and
+    /// returns the border-box size of each of `nodes`.
+    fn sizes(taffy: &mut TaffyTree<LayoutFloat>, root: NodeId, nodes: &[NodeId]) -> Vec<(LayoutFloat, LayoutFloat)> {
+        taffy.disable_rounding();
+        taffy
+            .compute_layout_with_measure(root, Size::MAX_CONTENT, |inputs, _, content, style| {
+                let height = content.map_or(0.0, |height| *height);
+                compute_leaf_layout(
+                    inputs,
+                    style,
+                    |_, _| 0.0,
+                    |known, _| Size { width: known.width.unwrap_or(0.0), height: known.height.unwrap_or(height) },
+                )
+            })
+            .unwrap();
+        nodes
+            .iter()
+            .map(|node| taffy.layout(*node).map(|layout| (layout.size.width, layout.size.height)).unwrap())
+            .collect()
+    }
+
+    /// The border-box sizes of `boxes` laid out as the children of a block 1000px wide, then each laid out alone
+    /// as the root, each a leaf with content `content` px high and then a block container holding a box that
+    /// high: `[child leaf, child container, root leaf, root container]` per box.
+    fn block_sizes(boxes: &[Style], content: LayoutFloat) -> Vec<[(LayoutFloat, LayoutFloat); 4]> {
+        boxes
+            .iter()
+            .map(|style| {
+                let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
+                let filler =
+                    Style { size: Size { width: auto(), height: length(content as f32) }, ..Default::default() };
+                let leaf = taffy.new_leaf_with_context(style.clone(), content).unwrap();
+                let inner = taffy.new_leaf(filler.clone()).unwrap();
+                let container = taffy.new_with_children(style.clone(), &[inner]).unwrap();
+                let block = Style {
+                    display: Display::Block,
+                    size: Size { width: length(1000.0), height: auto() },
+                    ..Default::default()
+                };
+                let root = taffy.new_with_children(block, &[leaf, container]).unwrap();
+                let [child_leaf, child_container] = sizes(&mut taffy, root, &[leaf, container])[..] else { panic!() };
+                let mut alone: TaffyTree<LayoutFloat> = TaffyTree::new();
+                let root_leaf = alone.new_leaf_with_context(style.clone(), content).unwrap();
+                let root_leaf = sizes(&mut alone, root_leaf, &[root_leaf])[0];
+                let inner = alone.new_leaf(filler).unwrap();
+                let root_container = alone.new_with_children(style.clone(), &[inner]).unwrap();
+                let root_container = sizes(&mut alone, root_container, &[root_container])[0];
+                [child_leaf, child_container, root_leaf, root_container]
+            })
+            .collect()
+    }
+
+    /// A block `width` px wide, `aspect-ratio: ratio`, with `extra`'s other styles.
+    fn ratio_box(width: f32, ratio: f32, extra: Style) -> Style {
+        Style {
+            display: Display::Block,
+            size: Size { width: length(width), height: auto() },
+            aspect_ratio: Some(ratio),
+            ..extra
+        }
+    }
+
+    // VIPER-PATCH(aspect-ratio-layout-unit): a size through a ratio is truncated to the layout unit.
+
+    /// A flex column 505.59375px wide stretches its 1px-bordered content-box `aspect-ratio: 4` item: 503.59375px of
+    /// content is 125.8984375px high, 125.890625px in layout units as Blink's `MulDiv` truncates (127.890625px with
+    /// the border); and a 568.796875px-wide block's `aspect-ratio: 16 / 9` child is 319.9375px high, not 319.948px.
+    #[test]
+    fn a_size_through_an_aspect_ratio_is_truncated_to_the_layout_unit() {
+        let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
+        let item = Style {
+            box_sizing: BoxSizing::ContentBox,
+            border: Rect { left: length(1.0), right: length(1.0), top: length(1.0), bottom: length(1.0) },
+            aspect_ratio: Some(4.0),
+            ..Default::default()
+        };
+        let item = taffy.new_leaf(item).unwrap();
+        let column = Style {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            size: Size { width: length(505.59375), height: auto() },
+            ..Default::default()
+        };
+        let column = taffy.new_with_children(column, &[item]).unwrap();
+        let wide = taffy.new_leaf(Style { aspect_ratio: Some(16.0 / 9.0), ..Default::default() }).unwrap();
+        let block = Style {
+            display: Display::Block,
+            size: Size { width: length(568.796875), height: auto() },
+            ..Default::default()
+        };
+        let block = taffy.new_with_children(block, &[wide]).unwrap();
+        let root =
+            taffy.new_with_children(Style { display: Display::Block, ..Default::default() }, &[column, block]).unwrap();
+        assert_eq!(sizes(&mut taffy, root, &[item, wide]), [(505.59375, 127.890625), (568.796875, 319.9375)]);
+    }
+
+    // VIPER-PATCH(aspect-ratio-limits): a minimum or maximum size goes through the ratio into the ratio-dependent
+    // axis only.
+
+    /// `width: 200px; aspect-ratio: 4; min-height: 80px` is 200 × 80 (upstream 320px wide), and `width: 400px;
+    /// aspect-ratio: 1; max-height: 90px` 400 × 90 (upstream 90px wide), as children and as roots, leaves and
+    /// containers; `height: 20px; aspect-ratio: 4; min-height: 30px`, whose height determines its width, is still
+    /// 120 × 30.
+    #[test]
+    fn a_minimum_or_maximum_height_does_not_change_a_definite_width() {
+        let floor = ratio_box(
+            200.0,
+            4.0,
+            Style { min_size: Size { width: auto(), height: length(80.0) }, ..Default::default() },
+        );
+        let capped = ratio_box(
+            400.0,
+            1.0,
+            Style { max_size: Size { width: auto(), height: length(90.0) }, ..Default::default() },
+        );
+        let from_height = Style {
+            display: Display::Block,
+            size: Size { width: auto(), height: length(20.0) },
+            min_size: Size { width: auto(), height: length(30.0) },
+            aspect_ratio: Some(4.0),
+            ..Default::default()
+        };
+        let sizes = block_sizes(&[floor, capped, from_height], 0.0);
+        assert_eq!(sizes, [[(200.0, 80.0); 4], [(400.0, 90.0); 4], [(120.0, 30.0); 4]]);
+        // With both sizes `auto` a limit still goes either way: `max-height: 20px; aspect-ratio: 2` narrows the
+        // stretched child to 40px, as Chrome does (upstream's fixture `block_aspect_ratio_fill_max_width`).
+        let narrowed = Style {
+            display: Display::Block,
+            max_size: Size { width: auto(), height: length(20.0) },
+            aspect_ratio: Some(2.0),
+            ..Default::default()
+        };
+        let [narrowed] = block_sizes(&[narrowed], 0.0)[..] else { panic!() };
+        assert_eq!(narrowed[..2], [(40.0, 20.0); 2]);
+    }
+
+    // VIPER-PATCH(aspect-ratio-content-minimum): a height through the ratio floors the content's where the box's
+    // automatic minimum height is content-based.
+
+    /// A 150px-wide `aspect-ratio: 3` box is 50px high, and grows to content 154px high (upstream 50px), as a leaf
+    /// and as a block container, a child or the root; `min-height: 0` or `overflow: hidden` keep it at 50px, a
+    /// `max-height` of 100px caps its content's height, and content 20px high leaves it at 50px.
+    #[test]
+    fn a_ratio_box_grows_to_its_content_unless_its_minimum_is_set_or_it_clips() {
+        let plain = ratio_box(150.0, 3.0, Style::default());
+        let zero = ratio_box(
+            150.0,
+            3.0,
+            Style { min_size: Size { width: auto(), height: length(0.0) }, ..Default::default() },
+        );
+        let hidden = ratio_box(
+            150.0,
+            3.0,
+            Style { overflow: Point { x: Overflow::Hidden, y: Overflow::Hidden }, ..Default::default() },
+        );
+        let capped = ratio_box(
+            150.0,
+            3.0,
+            Style { max_size: Size { width: auto(), height: length(100.0) }, ..Default::default() },
+        );
+        let tall = block_sizes(&[plain.clone(), zero, hidden, capped], 154.0);
+        assert_eq!(tall, [[(150.0, 154.0); 4], [(150.0, 50.0); 4], [(150.0, 50.0); 4], [(150.0, 100.0); 4]]);
+        assert_eq!(block_sizes(&[plain], 20.0), [[(150.0, 50.0); 4]]);
+        // A maximum height transferred from `max-width` caps the ratio's height, not the content's: a stretched
+        // `max-width: 40px; aspect-ratio: 2` child with content 60px high is 40 × 60, as in Chrome (upstream's
+        // fixture `block_aspect_ratio_fill_max_height`).
+        let narrow = Style {
+            display: Display::Block,
+            max_size: Size { width: length(40.0), height: auto() },
+            aspect_ratio: Some(2.0),
+            ..Default::default()
+        };
+        let [narrow] = block_sizes(&[narrow], 60.0)[..] else { panic!() };
+        assert_eq!(narrow[..2], [(40.0, 60.0); 2]);
+    }
+
+    /// A `content-box` box with 10px of padding and a 5px border and `aspect-ratio: 3 / 2`, 180px wide or
+    /// stretched to 210px, has a 180 × 120 content box: 210 × 150 (stretched, upstream divided the border box:
+    /// 140px high).
+    #[test]
+    fn a_content_box_ratio_box_is_sized_through_its_content_box() {
+        let edges =
+            |value: f32| Rect { left: length(value), right: length(value), top: length(value), bottom: length(value) };
+        let style = Style {
+            display: Display::Block,
+            box_sizing: BoxSizing::ContentBox,
+            padding: edges(10.0),
+            border: edges(5.0),
+            aspect_ratio: Some(1.5),
+            ..Default::default()
+        };
+        let fixed = Style { size: Size { width: length(180.0), height: auto() }, ..style.clone() };
+        let [fixed] = block_sizes(&[fixed], 0.0)[..] else { panic!() };
+        assert_eq!(fixed, [(210.0, 150.0); 4]);
+        let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
+        let leaf = taffy.new_leaf(style.clone()).unwrap();
+        let inner = taffy.new_leaf(Style::default()).unwrap();
+        let container = taffy.new_with_children(style, &[inner]).unwrap();
+        let block = Style {
+            display: Display::Block,
+            size: Size { width: length(210.0), height: auto() },
+            ..Default::default()
+        };
+        let root = taffy.new_with_children(block, &[leaf, container]).unwrap();
+        assert_eq!(sizes(&mut taffy, root, &[leaf, container]), [(210.0, 150.0); 2]);
+    }
+
+    /// In a row aligned to the start, a flex item `width: 150px; aspect-ratio: 3` with content 54px high is 54px
+    /// high (upstream 50px), and 50px with `min-height: 0`; so is its line.
+    #[test]
+    fn a_flex_items_content_floors_its_ratio_height_from_a_definite_width() {
+        let item = |min_height: LengthPercentageAuto| {
+            let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
+            let style = ratio_box(
+                150.0,
+                3.0,
+                Style { min_size: Size { width: auto(), height: min_height }, ..Default::default() },
+            );
+            let leaf = taffy.new_leaf_with_context(style, 54.0).unwrap();
+            let row = Style {
+                display: Display::Flex,
+                align_items: AlignItems::FLEX_START,
+                size: Size { width: length(400.0), height: auto() },
+                ..Default::default()
+            };
+            let root = taffy.new_with_children(row, &[leaf]).unwrap();
+            sizes(&mut taffy, root, &[leaf, root])
+        };
+        assert_eq!(item(auto()), [(150.0, 54.0), (400.0, 54.0)]);
+        assert_eq!(item(length(0.0)), [(150.0, 50.0), (400.0, 50.0)]);
+    }
+}

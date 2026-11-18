@@ -2162,7 +2162,18 @@ fn determine_hypothetical_cross_size(
             _ => child_available_cross,
         };
 
-        let child_inner_cross = child_cross.unwrap_or_else(|| {
+        // VIPER-PATCH(aspect-ratio-content-minimum): in a row, an item whose cross size goes through its aspect ratio
+        // from a definite main size (`width: 150px; aspect-ratio: 3`) is measured too, so that its content's height
+        // floors that size where its automatic minimum size is content-based, as `flex-aspect-ratio` does for a main
+        // size from the flex basis. Upstream, and that patch, take the ratio's size unmeasured, so such an item with
+        // three lines of text kept a 50px content box where Chrome's is 54px.
+        let content_floor = constants.is_row
+            && child.cross_size_is_transferred
+            && child.cross_size_has_content_minimum
+            && child_cross.is_some()
+            && !tree.get_flexbox_child_style(child.node).is_compressible_replaced();
+        let measured_cross = child_cross.filter(|_| !content_floor);
+        let child_inner_cross = measured_cross.unwrap_or_else(|| {
             tree.compute_child_layout(
                 child.node,
                 LayoutInput {
@@ -2170,8 +2181,8 @@ fn determine_hypothetical_cross_size(
                     sizing_mode: SizingMode::ContentSize,
                     axis: constants.dir.cross_axis().into(),
                     known_dimensions: Size {
-                        width: if constants.is_row { child.target_size.width.into() } else { child_cross },
-                        height: if constants.is_row { child_cross } else { child.target_size.height.into() },
+                        width: if constants.is_row { child.target_size.width.into() } else { measured_cross },
+                        height: if constants.is_row { measured_cross } else { child.target_size.height.into() },
                     },
                     known_dimensions_are_definite: item_known_dimension_definiteness(constants, child),
                     parent_size: constants.node_inner_size,
@@ -2193,7 +2204,8 @@ fn determine_hypothetical_cross_size(
         // (`cross_size_has_content_minimum`). Upstream measures it without the ratio, so
         // `flex: 0 0 90px; aspect-ratio: 1` with a 1px border is 2px tall in the line's cross size, which then
         // ignores it.
-        let child_inner_cross = if child.cross_size_is_transferred && child_cross.is_none() {
+        // VIPER-PATCH(aspect-ratio-content-minimum): or measured for its content (`content_floor`).
+        let child_inner_cross = if child.cross_size_is_transferred && (child_cross.is_none() || content_floor) {
             let transferred = transferred_cross_size(child, constants.dir);
             if child.cross_size_has_content_minimum {
                 child_inner_cross.max(transferred)

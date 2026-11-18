@@ -1,9 +1,11 @@
 //! Computes size using styles and measure functions
 
 // VIPER-PATCH(size-containment): the shared containment code.
+// VIPER-PATCH(aspect-ratio-limits), VIPER-PATCH(aspect-ratio-content-minimum): the shared aspect-ratio code.
+use crate::compute::common::aspect_ratio::{
+    height_has_content_minimum, ratio_height, size_through_ratio, transfer_limits,
+};
 use crate::compute::common::containment::size_contained_inputs;
-// VIPER-PATCH(layout-f64): a size through an aspect ratio.
-use crate::geometry::ratio_div;
 #[cfg(feature = "content_size")]
 use crate::geometry::Rect;
 use crate::geometry::Size;
@@ -76,16 +78,20 @@ where
         }
         SizingMode::InherentSize => {
             let aspect_ratio = style.aspect_ratio();
-            let style_size = style
-                .size()
-                .maybe_resolve(parent_size, &resolve_calc_value)
-                .maybe_apply_aspect_ratio(aspect_ratio)
+            let raw_size = style.size().maybe_resolve(parent_size, &resolve_calc_value);
+            // VIPER-PATCH(aspect-ratio-content-minimum): a height through the ratio that the content may exceed is
+            // left to the measure, and floors it below.
+            let style_size = size_through_ratio(raw_size, aspect_ratio, height_has_content_minimum(style))
                 .maybe_add(box_sizing_adjustment);
-            let style_min_size = style
-                .min_size()
-                .maybe_resolve(parent_size, &resolve_calc_value)
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
+            // VIPER-PATCH(aspect-ratio-limits): the minimum goes through the ratio only into an axis whose size is
+            // `auto`. The maximum, as upstream, is not transferred: a transferred maximum does not cap the content
+            // (`aspect-ratio-content-minimum`).
+            let style_min_size = transfer_limits(
+                style.min_size().maybe_resolve(parent_size, &resolve_calc_value),
+                raw_size,
+                aspect_ratio,
+            )
+            .maybe_add(box_sizing_adjustment);
             let style_max_size =
                 style.max_size().maybe_resolve(parent_size, &resolve_calc_value).maybe_add(box_sizing_adjustment);
 
@@ -182,9 +188,13 @@ where
     let size = Size {
         width: clamped_size.width,
         // VIPER-PATCH(layout-f64): a size through the ratio, as a single-precision quotient.
+        // VIPER-PATCH(aspect-ratio-content-minimum): in the box that `box-sizing` names, within the limits.
         height: f32_max(
             clamped_size.height,
-            aspect_ratio.map(|ratio| ratio_div(clamped_size.width, ratio)).unwrap_or(0.0),
+            aspect_ratio
+                .map(|ratio| ratio_height(clamped_size.width, ratio, box_sizing_adjustment))
+                .maybe_clamp(node_min_size.height, node_max_size.height)
+                .unwrap_or(0.0),
         ),
     };
     let size = size.maybe_max(padding_border.sum_axes().map(Some));
