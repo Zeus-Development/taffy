@@ -2173,6 +2173,30 @@ mod aspect_ratio {
         assert_eq!(sizes(&mut taffy, root, &[item, wide]), [(505.59375, 127.890625), (568.796875, 319.9375)]);
     }
 
+    /// A size that is exactly a whole layout unit stays one, though the ratio is a single-precision float: 70px at
+    /// `aspect-ratio: 16 / 7` is 30.625px high (the `f32` quotient 30.624998px would truncate to 30.609375px), and
+    /// 27px at `21 / 9` is 63px wide (62.999996px, 62.984375px), as Blink's integer `MulDiv` gives them.
+    #[test]
+    fn a_whole_layout_unit_through_an_inexact_ratio_is_not_cut() {
+        let mut taffy: TaffyTree<LayoutFloat> = TaffyTree::new();
+        let wide = ratio_box(70.0, 16.0 / 7.0, Style::default());
+        let wide = taffy.new_leaf(wide).unwrap();
+        let tall = Style {
+            display: Display::Block,
+            size: Size { width: auto(), height: length(27.0) },
+            aspect_ratio: Some(21.0 / 9.0),
+            ..Default::default()
+        };
+        let tall = taffy.new_leaf(tall).unwrap();
+        let block = Style {
+            display: Display::Block,
+            size: Size { width: length(1000.0), height: auto() },
+            ..Default::default()
+        };
+        let root = taffy.new_with_children(block, &[wide, tall]).unwrap();
+        assert_eq!(sizes(&mut taffy, root, &[wide, tall]), [(70.0, 30.625), (63.0, 27.0)]);
+    }
+
     // VIPER-PATCH(aspect-ratio-limits): a minimum or maximum size goes through the ratio into the ratio-dependent
     // axis only.
 

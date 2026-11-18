@@ -675,15 +675,27 @@ pub(crate) fn ratio_div(value: LayoutFloat, ratio: f32) -> LayoutFloat {
 // column's 503.59375px-wide `aspect-ratio: 4` item is 125.890625px high, not 125.8984375px; an
 // embedder that rounds a flex item's size to its own unit would make it 125.90625px. Upstream keeps
 // the exact quotient. The grid patch `grid-fr-carry` uses the same unit.
-/// `size`, a size through an aspect ratio, truncated toward zero to the layout unit
+//
+// The ratio is one `f32` here, where Blink keeps its two integers, so a size that is exactly a whole
+// unit can land a few `f32` steps below it (70px at `16 / 7` is 30.624998px, 27px at `21 / 9` is
+// 62.999996px): within `RATIO_SLACK` steps of the next unit, the size is that unit (30.625px and
+// 63px, Chrome's) rather than one unit less.
+/// `size`, a size through an aspect ratio, truncated toward zero to the layout unit once the
+/// single-precision error of the ratio is absorbed
 #[inline(always)]
 fn in_layout_units(size: LayoutFloat) -> LayoutFloat {
     const LAYOUT_UNITS_PER_PX: LayoutFloat = 64.0;
+    /// The single-precision steps of error absorbed: the ratio's rounding, the product's or
+    /// quotient's, and the size's own conversion to `f32`, each at most half a step
+    const RATIO_SLACK: LayoutFloat = 4.0;
     if !size.is_finite() {
         return size;
     }
+    let units = size * LAYOUT_UNITS_PER_PX;
+    let slack = units.abs() * RATIO_SLACK * LayoutFloat::from(f32::EPSILON);
+    let absorbed = if units < 0.0 { units - slack } else { units + slack };
     // Rust's float-to-int cast truncates toward zero and saturates (and needs no `std`).
-    (size * LAYOUT_UNITS_PER_PX) as i64 as LayoutFloat / LAYOUT_UNITS_PER_PX
+    absorbed as i64 as LayoutFloat / LAYOUT_UNITS_PER_PX
 }
 
 impl<T> Size<Option<T>> {
