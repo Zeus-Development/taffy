@@ -70,6 +70,9 @@ Branch: viper/taffy-0.15.0
 | `float-beside-earlier-float` | a float that starts beside an earlier, shorter float and reaches below the float context's last segment is recorded down to its own bottom (`FloatContext::place_floated_box`): a segment from the last segment's end to the float's bottom, with no float on the other side (CSS 2.1 §9.5, §9.5.1) | none (no register entry existed; Viper issue #1128) | fork: `float_beside_earlier_float::a_float_on_the_other_side_keeps_its_part_below_the_shorter_float`, `a_float_on_the_same_side_keeps_its_part_below_the_shorter_float`, `the_part_below_has_no_inset_on_the_other_side`, `a_cleared_formatting_context_goes_below_the_taller_float`, `a_cleared_flow_root_beside_a_hanging_float_goes_below_the_taller_float`, `a_flow_root_beside_a_hanging_float_stays_beside_the_taller_float`; Viper: `viper-layout::floats a_cleared_table_beside_a_hanging_float_goes_below_the_taller_float` | MIT; the Viper owner's own fix, commit `169e636d91f35aa11020634761b67972801aa460` of this fork's branch `fix-float-tail-below-earlier-floats` (upstream PR #1212), adapted: the new segment has no inset on the float's other side | offered upstream as PR #1212 (open; upstream issue #1211) |
 | `shrink-to-fit-percentages` | a float with `width: auto`, whose width comes from its content, resolves its children's percentage sizes and padding against that width once it is known, not as `auto` (CSS Sizing 3 §5.2.1) | none (no register entry existed; Viper issue #981, L1-FLOATS-2) | fork: `shrink_to_fit_percentages::a_percentage_child_of_a_float_is_its_share_of_the_floats_width`, `a_percentage_padding_widens_a_content_box_child_of_a_float`; Viper: `viper-layout::float_rules a_percentage_child_of_a_shrink_to_fit_float_is_half_its_width` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 | `indefinite-calc-percentage` | a `calc()` length-percentage (padding, border, margin, gap) whose percentage basis is indefinite resolves with its percentage taken as zero, its lengths kept, where upstream dropped the whole `calc()` (CSS Sizing 3 §5.2.1) | none (no register entry existed; Viper issue #983, L1-CAPTION-CALC-1) | fork: `indefinite_calc_percentage::a_calc_padding_of_an_indefinite_basis_keeps_its_length`, `a_calc_padding_of_a_definite_basis_resolves_against_it`, `a_calc_margin_of_an_indefinite_basis_keeps_its_length`; Viper: `viper-layout css_table::tests::calc::a_captions_calc_padding_widens_an_auto_table_by_its_length` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
+| `aspect-ratio-layout-unit` | a size through an aspect ratio is truncated toward zero to the layout unit, 1/64 px, as Blink's `LayoutUnit::MulDiv` truncates, so a flex item's ratio size is a layout unit before an embedder rounds the item's size (CSS Sizing 4, `aspect-ratio`) | none (no register entry existed; Viper issue #1014, L1-ASPECT-RATIO-2) | fork: `aspect_ratio::a_size_through_an_aspect_ratio_is_truncated_to_the_layout_unit`; Viper: `viper-layout::aspect_ratio a_flex_columns_ratio_sizes_are_truncated_to_the_layout_unit` | MIT (Viper's own change; the rule follows Chromium's BSD-licensed `length_utils.cc`, no code copied) | candidate; never offered without the owner |
+| `aspect-ratio-limits` | a box's minimum and maximum sizes go through its aspect ratio only into an axis whose size is `auto`, never into a definite size (a `min-height` no longer widens a box of definite width), in block layout, its root and a leaf's minimum (CSS Sizing 4, aspect-ratio size transfers) | none (no register entry existed; Viper issue #1014, L1-ASPECT-RATIO-2) | fork: `aspect_ratio::a_minimum_or_maximum_height_does_not_change_a_definite_width`; Viper: `viper-layout::aspect_ratio a_minimum_or_maximum_height_does_not_change_a_definite_width` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
+| `aspect-ratio-content-minimum` | where a box's automatic minimum height is content-based (a preferred aspect ratio, `min-height: auto`, neither replaced nor a scroll container), its height through the ratio is a floor for its content's height, in block, leaf and flex row layout; the ratio's height is in the box `box-sizing` names (CSS Sizing 4, automatic content-based minimum sizes) | none (no register entry existed; Viper issue #1014, L1-ASPECT-RATIO-2) | fork: `aspect_ratio::a_ratio_box_grows_to_its_content_unless_its_minimum_is_set_or_it_clips`, `a_content_box_ratio_box_is_sized_through_its_content_box`, `a_flex_items_content_floors_its_ratio_height_from_a_definite_width`; Viper: `viper-layout::aspect_ratio a_ratio_box_grows_to_its_text_in_block_and_flex_layout` | MIT (Viper's own change, from the specification; no browser source read) | candidate; never offered without the owner |
 
 ### `grid-fr-carry`
 
@@ -557,6 +560,69 @@ of 0 and keeps the 6px.
   definite test passes both ways.
 - **Upstream.** Upstream `main` has the same code.
 
+### `aspect-ratio-layout-unit`
+
+`src/geometry.rs`, `ratio_mul` and `ratio_div`, through which every size
+goes through an aspect ratio. Blink transfers a size through a ratio with
+`LayoutUnit::MulDiv` (`BlockSizeFromAspectRatio` and
+`InlineSizeFromAspectRatio` in
+`third_party/blink/renderer/core/layout/length_utils.cc`), an integer
+division of layout units that truncates; Taffy kept the exact quotient.
+An embedder that truncates every size to its unit sees no difference, but
+one that rounds a flex item's size to the nearest unit, as Viper does for
+flexed sizes, made a flex column's 503.59375px-wide `aspect-ratio: 4` item
+125.90625px high where Chrome's is 125.890625px (Viper issue #1014; the
+corpus design `flex-20-aspect-ratio-items`). The product or quotient stays
+single-precision (`layout-f64`), then is truncated toward zero to 1/64 px,
+the unit `grid-fr-carry` uses.
+
+### `aspect-ratio-limits`
+
+`src/compute/common/aspect_ratio.rs` (`transfer_limits`), used by
+`src/compute/block.rs` (the box's own limits and its children's),
+`src/compute/mod.rs` (a block root) and `src/compute/leaf.rs` (its
+minimum). Upstream filled a missing minimum or maximum in either axis from
+the other through the ratio, whatever the box's sizes, so
+`width: 200px; aspect-ratio: 4; min-height: 80px` was 320px wide and
+`width: 30%; aspect-ratio: 1; max-height: 90px` 90px wide; Chrome keeps the
+200px and the 30% (the corpus design `block-15-aspect-ratio`). A limit now
+goes into an axis only when the box's size there is `auto`: with both
+sizes `auto` it still goes either way, as Chrome narrows a stretched
+`max-height: 20px; aspect-ratio: 2` block to 40px (upstream's fixture
+`block_aspect_ratio_fill_max_width`).
+
+### `aspect-ratio-content-minimum`
+
+`src/compute/common/aspect_ratio.rs`, used by `src/compute/block.rs`,
+`src/compute/mod.rs`, `src/compute/leaf.rs` and `src/compute/flexbox.rs`. A box with a preferred
+aspect ratio that is neither replaced nor a scroll container and has
+`min-height: auto` has a content-based automatic minimum height. Upstream
+took the height through the ratio as the box's size, so a 150px-wide
+`aspect-ratio: 3` box was 50px high whatever its content; Chrome grows it
+to its text (`block-15-aspect-ratio`'s `#t`, 154px).
+
+- **Block and leaf.** The parent, or the root, leaves such a height
+  unknown (`size_through_ratio`), and the box takes the larger of the
+  ratio's height and its content's: `compute_inner` keeps the ratio's height
+  as a floor, still the children's percentage basis, and the leaf's measure
+  no longer receives it. The content is capped by the box's own maximum
+  height only, not by one transferred from `max-width`: Chrome makes a
+  stretched `max-width: 40px; aspect-ratio: 2` box with 60px of text 60px
+  high (upstream's fixture `block_aspect_ratio_fill_max_height`).
+- **The ratio's height** is computed in the box that `box-sizing` names
+  (`ratio_height`, `known_through_ratio`). Upstream divided the border box,
+  which a `content-box` box with padding reached once its parent stopped
+  passing the height: 210px wide with 15px of padding and border a side and
+  `aspect-ratio: 3 / 2` gave 140px, not 150px.
+- **Flex rows.** An item whose cross size goes through its ratio from a
+  definite main size (`width: 150px`) is measured too, as `flex-aspect-ratio`
+  measures one whose main size is its flex basis, so its content floors its
+  hypothetical and used cross sizes (`flex-20-aspect-ratio-items`'s `#txt`,
+  54px where the ratio gives 50px). A column, whose cross axis is the
+  inline axis, keeps the ratio's width.
+- **Limits.** The inline-axis content-based minimum (a box whose height
+  determines its width) is not applied.
+
 ## Upstream work evaluated
 
 Upstream work in progress read on 2026-10-17 for these patches (upstream
@@ -633,3 +699,4 @@ Each Viper revision that moves its pin to this branch.
 | TAFFY-FLOAT-SEGMENTS | the last commit of the range that adds this row | `float-beside-earlier-float` |
 | L1-FLOATS-2 | the last commit of the range that adds this row | `shrink-to-fit-percentages` |
 | L1-CAPTION-CALC-1 | the last commit of the range that adds this row | `indefinite-calc-percentage` |
+| L1-ASPECT-RATIO-2 | the last commit of the range that adds this row | `aspect-ratio-layout-unit`, `aspect-ratio-limits`, `aspect-ratio-content-minimum` |
